@@ -14,6 +14,19 @@ const reservarAsiento = (idVuelo, idAsiento, callback) => {
     });
 };
 
+// Cancelar un asiento (pasar de confirmado a disponible)
+const cancelarAsiento = (idVuelo, idAsiento, callback) => {
+    const query = `UPDATE asiento SET Estado = 'disponible' WHERE Id_vuelo = ? AND Id_asiento = ? AND Estado = 'confirmado'`;
+    db.query(query, [idVuelo, idAsiento], (err, result) => {
+        if (err) return callback(err);
+        if (result.affectedRows === 0) {
+            return callback(null, { success: false, message: 'El asiento no estaba confirmado o no existe.' });
+        }
+        callback(null, { success: true, message: 'Asiento cancelado correctamente.' });
+    });
+};
+
 module.exports = {
-    reservarAsiento
+    reservarAsiento,
+    cancelarAsiento
 };
