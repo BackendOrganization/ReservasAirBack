@@ -8,4 +8,7 @@ router.get('/asientos/:idVuelo', asientosController.getTodosLosAsientos);
 // Ruta para obtener asientos libres de un vuelo específico
 router.get('/asientos/:idVuelo/libres', asientosController.getAsientosLibres);
 
+// Ruta para obtener asientos ocupados de un vuelo específico
+router.get('/asientos/:idVuelo/ocupados', asientosController.getAsientosOcupados);
+
 module.exports = router;
