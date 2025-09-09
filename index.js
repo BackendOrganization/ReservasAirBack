@@ -8,6 +8,9 @@ app.get("/", (req, res) => {
   res.send("Bienvenido a ReservasAirBack 🚀");
 });
 
+const asientosRoutes = require('./routes/asientosRoutes');
+app.use(asientosRoutes);
+
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
