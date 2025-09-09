@@ -42,4 +42,3 @@ exports.cancelarAsiento = (req, res) => {
 	});
 };
 
-const reservasModel = require('../models/reservasModel');
