@@ -21,7 +21,6 @@ app.use(testRabbit);
 
 (async () => {
   await connectRabbitMQ();
-  consumePaymentEvents();
 })();
 
 app.listen(PORT, () => {
