@@ -8,6 +8,5 @@ router.get('/asientos/:idVuelo', asientosController.getTodosLosAsientos);
 
 //router.get('/asientos/:idVuelo/ocupados', asientosController.getAsientosOcupados);
 
-//router.put('/asientos/:idReserva/actualizar', asientosController.actualizarAsientos);
 
 module.exports = router;
