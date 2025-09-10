@@ -62,8 +62,7 @@ const timeOutFallaAsiento = (idVuelo, idAsiento, callback) => {
 
 module.exports = {
     obtenerTodosLosAsientos,
-    obtenerAsientosLibres,
-    obtenerAsientosOcupados,
+
     reservarAsiento,
     cancelarAsiento
 };

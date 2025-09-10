@@ -15,10 +15,6 @@ const generarReserva = (Id_usuario, Id_vuelo, Id_asiento, callback) => {
     });
 };
 
-module.exports = {
-    generarReserva,
-    cancelarReserva
-};
 const cancelarReserva = (Id_reserva, Id_vuelo, Id_asiento, callback) => {
     // Actualiza el estado de la reserva a 'cancelado'
     const query = `UPDATE reserva SET Estado = 'cancelado' WHERE Id_reserva = ?`;
@@ -30,4 +26,10 @@ const cancelarReserva = (Id_reserva, Id_vuelo, Id_asiento, callback) => {
             callback(null, { success: true, reservaId: Id_reserva, asiento: res2 });
         });
     });
+};
+
+
+module.exports = {
+    generarReserva,
+    cancelarReserva
 };
