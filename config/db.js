@@ -1,16 +1,19 @@
-const mysql = require('mysql');
+const mysql = require('mysql2');
+
 const db = mysql.createConnection({
-  host: '127.0.0.1',
-  user: 'agusmel03',
-  password: '1234',
-  database: 'ReservasAirBack',
-  port: 3306 // <-- agrega esto
+  host: 'centerbeam.proxy.rlwy.net',
+  user: 'root',
+  password: 'JjESEyIPThXsGnxlPmYBTESJkNmIgQYv',
+  database: 'railway',
+  port: 51597
 });
+
 db.connect((err) => {
   if (err) {
     console.error('Error de conexión:', err);
     throw err;
   }
-  console.log('Conectado a MySQL');
+  console.log('Conectado a MySQL Railway');
 });
+
 module.exports = db;
