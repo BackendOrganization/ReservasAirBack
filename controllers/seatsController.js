@@ -1,19 +1,17 @@
-const asientosModel = require('../models/asientosModel');
+const seatsModel = require('../models/seatsModel');
 
-// Obtener todos los asientos
-exports.getTodosLosAsientos = (req, res) => {
-    const idVuelo = req.params.idVuelo || req.query.idVuelo;
-    if (!idVuelo) {
-        return res.status(400).json({ error: 'Debe proporcionar el id de vuelo' });
+// Get all seats
+exports.getAllSeats = (req, res) => {
+    const flightId = req.params.flightId || req.query.flightId;
+    if (!flightId) {
+        return res.status(400).json({ error: 'Missing flightId' });
     }
-
-
-    asientosModel.obtenerTodosLosAsientos(idVuelo, (err, asientos) => {
+    seatsModel.getAllSeats(flightId, (err, seats) => {
         if (err) {
             console.error(err);
-            return res.status(500).json({ error: 'Error al obtener los asientos' });
+            return res.status(500).json({ error: 'Error getting seats' });
         }
-        res.json(asientos);
+        res.json(seats);
     });
 };
 
