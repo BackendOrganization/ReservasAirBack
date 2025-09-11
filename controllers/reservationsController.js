@@ -1,4 +1,4 @@
-const reservasModel = require('../models/reservasModel');
+const reservationsModel = require('../models/reservationsModel');
 
 
 exports.changeSeat = (req, res) => {
@@ -8,7 +8,7 @@ exports.changeSeat = (req, res) => {
 	if (!reservationId || !oldSeatId || !newSeatId) {
 		return res.status(400).json({ error: 'Missing required fields' });
 	}
-	reservasModel.changeSeat(reservationId, oldSeatId, newSeatId, (err, result) => {
+	reservationsModel.changeSeat(reservationId, oldSeatId, newSeatId, (err, result) => {
 		if (err) {
 			console.error(err);
 			return res.status(500).json({ error: 'Error changing seat for reservation' });
@@ -26,7 +26,7 @@ exports.createReservation = (req, res) => {
 	if (!userId || !flightId || !seatId || amount == null) {
 		return res.status(400).json({ error: 'Missing required fields: userId, flightId, seatId, amount' });
 	}
-	reservasModel.createReservation(userId, flightId, seatId, amount, (err, result) => {
+	reservationsModel.createReservation(userId, flightId, seatId, amount, (err, result) => {
 		if (err) {
 			console.error(err);
 			return res.status(500).json({ error: 'Error creating reservation' });
@@ -43,7 +43,7 @@ exports.cancelReservation = (req, res) => {
 	if (!userId || !flightId || !seatId || amount == null) {
 		return res.status(400).json({ error: 'Missing required fields: userId, flightId, seatId, amount' });
 	}
-	reservasModel.cancelReservation(userId, flightId, seatId, amount, (err, result) => {
+	reservationsModel.cancelReservation(userId, flightId, seatId, amount, (err, result) => {
 		if (err) {
 			console.error(err);
 			return res.status(500).json({ error: 'Error cancelling reservation' });

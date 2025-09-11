@@ -8,19 +8,19 @@ const dotenv = require('dotenv').config();
 app.use(express.json());
 
 app.get("/", (req, res) => {
-  res.send("Bienvenido a ReservasAirBack 🚀");
+  res.send("Welcome to ReservasAirBack 🚀");
 });
 
-const asientosRoutes = require('./routes/asientosRoutes');
-const reservasRoutes = require('./routes/reservasRoutes');
 
+const seatsRoutes = require('./routes/seatsRoutes');
+const reservationsRoutes = require('./routes/reservationsRoutes');
 
-app.use(asientosRoutes);
-app.use(reservasRoutes);
+app.use(seatsRoutes);
+app.use(reservationsRoutes);
 
 
 
 
 app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`Server running at http://localhost:${PORT}`);
 });

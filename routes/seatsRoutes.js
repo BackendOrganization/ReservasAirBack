@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const asientosController = require('../controllers/asientosController.js');
+const seatsController = require('../controllers/seatsController.js');
 
-router.get('/asientos/:idVuelo', asientosController.getTodosLosAsientos);
+router.get('/seats/flight/:flightId', seatsController.getAllSeats);
 
 //router.get('/asientos/:idVuelo/libres', asientosController.getAsientosLibres);
 
