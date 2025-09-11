@@ -63,7 +63,7 @@ const cancelReservation = (reservationId, amount, callback) => {
         if (reservation.status === 'CANCELLED') {
             return callback(null, { success: false, message: 'Reservation is already cancelled.' });
         }
-              const cancelQuery = `UPDATE reservations SET status = 'CANCELLED' WHERE reservationId = ?`;
+                                const pendingQuery = `UPDATE reservations SET status = 'PENDING' WHERE reservationId = ?`;
         const seatId = reservation.seatId;
         const externalFlightId = reservation.externalFlightId;
         asientosModel.cancelSeat(externalFlightId, seatId, (err3, res3) => {
@@ -72,9 +72,9 @@ const cancelReservation = (reservationId, amount, callback) => {
                 // Do not cancel reservation or log payment event if seat cancellation failed
                 return callback(null, { success: false, message: res3.message });
             }
-            db.query(cancelQuery, [reservationId], (err2, result2) => {
+                            db.query(pendingQuery, [reservationId], (err2, result2) => {
                 if (err2) return callback(err2);
-                const eventoQuery = `INSERT INTO paymentEvents (reservationId, userId, paymentStatus, amount) VALUES (?, ?, 'CANCELLED', ?)`;
+                                    const eventoQuery = `INSERT INTO paymentEvents (reservationId, userId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
                 db.query(eventoQuery, [reservationId, reservation.externalUserId, amount], (err4, resultEvento) => {
                     if (err4) return callback(err4);
                     callback(null, { success: true, message: res3.message });
