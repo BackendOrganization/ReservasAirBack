@@ -6,6 +6,6 @@ const reservasController = require('../controllers/reservasController.js');
 router.post('/asientos/:idVuelo/reservar', reservasController.reservarAsiento);
 
 // Ruta para cancelar una reserva (pasar de confirmado a disponible)
-router.post('/asientos/:idVuelo/cancelar', reservasController.cancelarAsiento);
+router.post('/asientos/:idVuelo/cancelar', reservasController.cancelarReserva);
 
 module.exports = router;
