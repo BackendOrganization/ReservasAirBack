@@ -13,4 +13,6 @@ router.post('/reservation/book', reservationsController.createReservation);
 // Ruta para cancelar una reserva (pasar de confirmado a disponible)
 router.post('/reservation/cancel', reservationsController.cancelReservation);
 
+router.get('/reservation/user/:externalUserId', reservationsController.getReservationsByExternalUserId);
+
 module.exports = router;

@@ -1,3 +1,15 @@
+const getReservationsByExternalUserId = (externalUserId, callback) => {
+    const query = `
+        SELECT r.*, p.paymentStatus
+        FROM reservations r
+        LEFT JOIN paymentEvents p ON r.reservationId = p.reservationId
+        WHERE r.externalUserId = ? AND (r.status = 'PAID' OR r.status = 'CANCELLED')
+    `;
+    db.query(query, [externalUserId], (err, results) => {
+        if (err) return callback(err);
+        callback(null, results);
+    });
+};
 const db = require('../config/db');
 const asientosModel = require('./seatsModel');
 
@@ -83,4 +95,5 @@ module.exports = {
     createReservation,
     cancelReservation,
     changeSeat
+    ,getReservationsByExternalUserId
 };

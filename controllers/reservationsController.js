@@ -1,3 +1,16 @@
+exports.getReservationsByExternalUserId = (req, res) => {
+	const externalUserId = req.params.externalUserId;
+	if (!externalUserId) {
+		return res.status(400).json({ error: 'Missing required parameter: externalUserId' });
+	}
+	reservationsModel.getReservationsByExternalUserId(externalUserId, (err, results) => {
+		if (err) {
+			console.error(err);
+			return res.status(500).json({ error: 'Error fetching reservations' });
+		}
+		res.json(results);
+	});
+};
 const reservationsModel = require('../models/reservationsModel');
 
 
