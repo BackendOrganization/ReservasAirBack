@@ -2,11 +2,11 @@ const seatsModel = require('../models/seatsModel');
 
 // Get all seats
 exports.getAllSeats = (req, res) => {
-    const flightId = req.params.flightId || req.query.flightId;
-    if (!flightId) {
-        return res.status(400).json({ error: 'Missing flightId' });
+    const externalFlightId = req.params.externalFlightId || req.query.externalFlightId;
+    if (!externalFlightId) {
+        return res.status(400).json({ error: 'Missing externalFlightId' });
     }
-    seatsModel.getAllSeats(flightId, (err, seats) => {
+    seatsModel.getAllSeats(externalFlightId, (err, seats) => {
         if (err) {
             console.error(err);
             return res.status(500).json({ error: 'Error getting seats' });

@@ -3,45 +3,59 @@ const asientosModel = require('./seatsModel');
 
 
 
-const createReservation = (userId, flightId, seatId, amount, callback) => {
-    const status = 'PENDING';
-    const query = `INSERT INTO reservations (externalUserId, externalFlightId, seatId, status) VALUES (?, ?, ?, ?)`;
-    db.query(query, [userId, flightId, seatId, status], (err, result) => {
+const createReservation = (externalUserId, externalFlightId, seatId, amount, callback) => {
+    if (!externalFlightId) {
+        return callback({ success: false, message: 'externalFlightId is required.' });
+    }
+    const checkQuery = `SELECT * FROM reservations WHERE seatId = ? AND (status = 'PENDING' OR status = 'CONFIRMED')`;
+    db.query(checkQuery, [seatId], (err, rows) => {
         if (err) return callback(err);
-        asientosModel.reservarAsiento(flightId, seatId, (err2, res2) => {
-            if (err2) return callback(err2);
-            const reservationId = result.insertId;
-            const eventoQuery = `INSERT INTO paymentEvents (reservationId, userId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
-            db.query(eventoQuery, [reservationId, userId, amount], (err3, resultEvento) => {
-                if (err3) return callback(err3);
-                callback(null, { success: true, reservationId, seat: res2 });
+        if (rows.length > 0) {
+            return callback(null, { success: false, message: 'Seat is already taken.' });
+        }
+        const status = 'PENDING';
+        const query = `INSERT INTO reservations (externalUserId, externalFlightId, seatId, status) VALUES (?, ?, ?, ?)`;
+        db.query(query, [externalUserId, externalFlightId, seatId, status], (err, result) => {
+            if (err) return callback(err);
+            asientosModel.reserveSeat(externalFlightId, seatId, (err2, res2) => {
+                if (err2) return callback(err2);
+                const reservationId = result.insertId;
+                const eventoQuery = `INSERT INTO paymentEvents (reservationId, userId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
+                db.query(eventoQuery, [reservationId, externalUserId, amount], (err3, resultEvento) => {
+                    if (err3) return callback(err3);
+                    callback(null, { success: true, message: 'Seat reserved successfully.' });
+                });
             });
         });
     });
 };
 
-const cancelReservation = (userId, flightId, seatId, amount, callback) => {
-    const checkStatusQuery = `SELECT status FROM seats WHERE externalFlightId = ? AND seatId = ?`;
-    db.query(checkStatusQuery, [flightId, seatId], (errCheck, statusRows) => {
-        if (errCheck) return callback(errCheck);
-        if (!statusRows[0] || statusRows[0].status === 'CANCELLED' || statusRows[0].status !== 'RESERVED') {
-            return callback(null, {
-                success: false,
-                message: 'El asiento no estaba confirmado, no existe o ya está cancelado.'
-            });
+const cancelReservation = (reservationId, amount, callback) => {
+    const findReservationQuery = `SELECT * FROM reservations WHERE reservationId = ?`;
+    db.query(findReservationQuery, [reservationId], (err, reservationRows) => {
+        if (err) return callback(err);
+        if (!reservationRows[0]) {
+            return callback(null, { success: false, message: 'Reservation does not exist.' });
         }
-
-        const status = 'CANCELLED';
-        const query = `INSERT INTO reservations (externalUserId, externalFlightId, seatId, status) VALUES (?, ?, ?, ?)`;
-        db.query(query, [userId, flightId, seatId, status], (err, result) => {
-            if (err) return callback(err);
-            asientosModel.cancelarAsiento(flightId, seatId, (err2, res2) => {
+        const reservation = reservationRows[0];
+        if (reservation.status === 'CANCELLED') {
+            return callback(null, { success: false, message: 'Reservation is already cancelled.' });
+        }
+              const cancelQuery = `UPDATE reservations SET status = 'CANCELLED' WHERE reservationId = ?`;
+        const seatId = reservation.seatId;
+        const externalFlightId = reservation.externalFlightId;
+        asientosModel.cancelSeat(externalFlightId, seatId, (err3, res3) => {
+            if (err3) return callback(err3);
+            if (!res3.success) {
+                // Do not cancel reservation or log payment event if seat cancellation failed
+                return callback(null, { success: false, message: res3.message });
+            }
+            db.query(cancelQuery, [reservationId], (err2, result2) => {
                 if (err2) return callback(err2);
-                const reservationId = result.insertId;
                 const eventoQuery = `INSERT INTO paymentEvents (reservationId, userId, paymentStatus, amount) VALUES (?, ?, 'CANCELLED', ?)`;
-                db.query(eventoQuery, [reservationId, userId, amount], (err3, resultEvento) => {
-                    if (err3) return callback(err3);
-                    callback(null, { success: true, reservationId, seat: res2 });
+                db.query(eventoQuery, [reservationId, reservation.externalUserId, amount], (err4, resultEvento) => {
+                    if (err4) return callback(err4);
+                    callback(null, { success: true, message: res3.message });
                 });
             });
         });
