@@ -33,22 +33,9 @@ async function publishPaymentEvent(event) {
   console.log('📤 Evento publicado:', event);
 }
 
-async function consumePaymentEvents() {
-  const ch = getChannel();
-  const queue = 'payment_events';
-  await ch.assertQueue(queue, { durable: false });
-
-  ch.consume(queue, msg => {
-    if (msg) {
-      console.log('📥 Evento recibido:', msg.content.toString());
-      ch.ack(msg);
-    }
-  });
-}
 
 module.exports = {
   connectRabbitMQ,
   getChannel,
-  publishPaymentEvent,
-  consumePaymentEvents
+  publishPaymentEvent
 };
