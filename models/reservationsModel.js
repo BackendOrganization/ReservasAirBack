@@ -41,7 +41,7 @@ const createReservation = (externalUserId, externalFlightId, seatId, amount, cal
                 asientosModel.reserveSeat(externalFlightId, seatId, (err4, res2) => {
                     if (err4) return callback(err4);
                     const reservationId = result.insertId;
-                    const eventoQuery = `INSERT INTO paymentEvents (reservationId, userId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
+                    const eventoQuery = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
                     db.query(eventoQuery, [reservationId, externalUserId, amount], (err5, resultEvento) => {
                         if (err5) return callback(err5);
                         callback(null, { success: true, message: 'Seat reserved successfully.' });
@@ -60,25 +60,18 @@ const cancelReservation = (reservationId, amount, callback) => {
             return callback(null, { success: false, message: 'Reservation does not exist.' });
         }
         const reservation = reservationRows[0];
-        if (reservation.status === 'CANCELLED') {
-            return callback(null, { success: false, message: 'Reservation is already cancelled.' });
+        if (reservation.status === 'CANCELLED' || reservation.status === 'PENDING') {
+            // No crear evento de pago si la reserva ya está cancelada
+            return callback(null, { success: false, message: 'Reservation is already cancelled. No payment event created.' });
         }
-                                const pendingQuery = `UPDATE reservations SET status = 'PENDING' WHERE reservationId = ?`;
-        const seatId = reservation.seatId;
-        const externalFlightId = reservation.externalFlightId;
-        asientosModel.cancelSeat(externalFlightId, seatId, (err3, res3) => {
-            if (err3) return callback(err3);
-            if (!res3.success) {
-                // Do not cancel reservation or log payment event if seat cancellation failed
-                return callback(null, { success: false, message: res3.message });
-            }
-                            db.query(pendingQuery, [reservationId], (err2, result2) => {
-                if (err2) return callback(err2);
-                                    const eventoQuery = `INSERT INTO paymentEvents (reservationId, userId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
-                db.query(eventoQuery, [reservationId, reservation.externalUserId, amount], (err4, resultEvento) => {
-                    if (err4) return callback(err4);
-                    callback(null, { success: true, message: res3.message });
-                });
+        const pendingQuery = `UPDATE reservations SET status = 'PENDING' WHERE reservationId = ?`;
+        // Solo actualizar la reserva a PENDING y registrar el evento de pago, sin liberar el asiento
+        db.query(pendingQuery, [reservationId], (err2, result2) => {
+            if (err2) return callback(err2);
+            const eventoQuery = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
+            db.query(eventoQuery, [reservationId, reservation.externalUserId, amount], (err4, resultEvento) => {
+                if (err4) return callback(err4);
+                callback(null, { success: true, message: 'Reservation set to pending and payment event logged.' });
             });
         });
     });

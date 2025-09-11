@@ -3,14 +3,14 @@ const reservationsModel = require('../models/reservationsModel');
 const seatsModel = require('../models/seatsModel');
 
 exports.confirmPayment = (req, res) => {
-    const { paymentStatus, reservationId, userId } = req.body;
-    if (!paymentStatus || !reservationId || !userId) {
-        return res.status(400).json({ error: 'Missing required fields: paymentStatus, reservationId, userId' });
+    const { paymentStatus, reservationId, externalUserId } = req.body;
+    if (!paymentStatus || !reservationId || !externalUserId) {
+        return res.status(400).json({ error: 'Missing required fields: paymentStatus, reservationId, externalUserId' });
     }
     if (paymentStatus !== 'SUCCESS') {
         return res.status(400).json({ error: 'Only paymentStatus SUCCESS is allowed for confirmation.' });
     }
-    paymentEventsModel.confirmPayment(paymentStatus, reservationId, userId, (err, result) => {
+    paymentEventsModel.confirmPayment(paymentStatus, reservationId, externalUserId, (err, result) => {
         if (err) {
             console.error(err);
             return res.status(500).json({ error: 'Error confirming payment' });
@@ -20,11 +20,11 @@ exports.confirmPayment = (req, res) => {
 };
 
 exports.cancelPayment = (req, res) => {
-    const { reservationId, userId } = req.body;
-    if (!reservationId || !userId) {
-        return res.status(400).json({ error: 'Missing required fields: reservationId, userId' });
+    const { reservationId, externalUserId } = req.body;
+    if (!reservationId || !externalUserId) {
+        return res.status(400).json({ error: 'Missing required fields: reservationId, externalUserId' });
     }
-    paymentEventsModel.cancelPayment(reservationId, userId, (err, result) => {
+    paymentEventsModel.cancelPayment(reservationId, externalUserId, (err, result) => {
         if (err) {
             console.error(err);
             return res.status(500).json({ error: 'Error cancelling payment' });
