@@ -14,10 +14,11 @@ app.get("/", (req, res) => {
 
 const seatsRoutes = require('./routes/seatsRoutes');
 const reservationsRoutes = require('./routes/reservationsRoutes');
+const paymentEventsRoutes = require('./routes/paymentEventsRoutes');
 
 app.use(seatsRoutes);
 app.use(reservationsRoutes);
-
+app.use(paymentEventsRoutes);
 
 
 
