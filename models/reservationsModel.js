@@ -15,37 +15,55 @@ const asientosModel = require('./seatsModel');
 
 
 
-const createReservation = (externalUserId, externalFlightId, seatId, amount, callback) => {
+const createReservation = (externalUserId, externalFlightId, seatIds, amount, callback) => {
     if (!externalFlightId) {
         return callback({ success: false, message: 'externalFlightId is required.' });
     }
-    const checkQuery = `SELECT * FROM reservations WHERE seatId = ? AND (status = 'PENDING' OR status = 'CONFIRMED')`;
-    db.query(checkQuery, [seatId], (err, rows) => {
+    if (!Array.isArray(seatIds) || seatIds.length === 0) {
+        return callback({ success: false, message: 'seatIds must be a non-empty array.' });
+    }
+
+    const placeholders = seatIds.map(() => '?').join(',');
+    const checkQuery = `
+        SELECT seatId, status FROM seats 
+        WHERE seatId IN (${placeholders}) AND (status = 'RESERVED' OR status = 'CONFIRMED')
+    `;
+    db.query(checkQuery, seatIds, (err, rows) => {
         if (err) return callback(err);
         if (rows.length > 0) {
-            return callback(null, { success: false, message: 'Seat is already taken.' });
+            return callback(null, { 
+                success: false, 
+                message: 'One or more seats are already taken.', 
+                takenSeats: rows.map(r => r.seatId) 
+            });
         }
-        const seatStatusQuery = `SELECT status FROM seats WHERE seatId = ?`;
-        db.query(seatStatusQuery, [seatId], (err2, seatRows) => {
+
+        // Guardar array como JSON en seatId (aunque el nombre sea seatId)
+        const status = 'PENDING';
+        const seatIdJson = JSON.stringify(seatIds);
+        const insertQuery = `INSERT INTO reservations (externalUserId, externalFlightId, seatId, status) VALUES (?, ?, ?, ?)`;
+        db.query(insertQuery, [externalUserId, externalFlightId, seatIdJson, status], (err2, result) => {
             if (err2) return callback(err2);
-            if (!seatRows[0]) {
-                return callback(null, { success: false, message: 'Seat does not exist.' });
-            }
-            if (seatRows[0].status === 'CONFIRMED') {
-                return callback(null, { success: false, message: 'Seat is already confirmed and cannot be reserved.' });
-            }
-            const status = 'PENDING';
-            const query = `INSERT INTO reservations (externalUserId, externalFlightId, seatId, status) VALUES (?, ?, ?, ?)`;
-            db.query(query, [externalUserId, externalFlightId, seatId, status], (err3, result) => {
-                if (err3) return callback(err3);
-                asientosModel.reserveSeat(externalFlightId, seatId, (err4, res2) => {
-                    if (err4) return callback(err4);
-                    const reservationId = result.insertId;
-                    const eventoQuery = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
-                    db.query(eventoQuery, [reservationId, externalUserId, amount], (err5, resultEvento) => {
-                        if (err5) return callback(err5);
-                        callback(null, { success: true, message: 'Seat reserved successfully.' });
-                    });
+
+            // Actualizar el estado de cada asiento
+            let completed = 0;
+            let hasError = false;
+            seatIds.forEach((seatId) => {
+                asientosModel.reserveSeat(externalFlightId, seatId, (err3) => {
+                    if (hasError) return;
+                    if (err3) {
+                        hasError = true;
+                        return callback(err3);
+                    }
+                    completed++;
+                    if (completed === seatIds.length) {
+                        const reservationId = result.insertId;
+                        const eventoQuery = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
+                        db.query(eventoQuery, [reservationId, externalUserId, amount], (err4) => {
+                            if (err4) return callback(err4);
+                            callback(null, { success: true, message: 'All seats reserved in one reservation.', reservationId });
+                        });
+                    }
                 });
             });
         });
