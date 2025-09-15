@@ -62,3 +62,17 @@ exports.cancelReservation = (req, res) => {
         res.json(result);
     });
 };
+
+exports.getFullReservationsByExternalUserId = (req, res) => {
+    const externalUserId = req.params.externalUserId;
+    if (!externalUserId) {
+        return res.status(400).json({ error: 'Missing required parameter: externalUserId' });
+    }
+    reservationsModel.getFullReservationsByExternalUserId(externalUserId, (err, results) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Error fetching full reservation data' });
+        }
+        res.json(results);
+    });
+};

@@ -15,4 +15,7 @@ router.post('/reservation/cancel', reservationsController.cancelReservation);
 
 router.get('/reservation/user/:externalUserId', reservationsController.getReservationsByExternalUserId);
 
+// Nuevo endpoint para reservas completas con datos de vuelo y asientos
+router.get('/reservation/full/:externalUserId', reservationsController.getFullReservationsByExternalUserId);
+
 module.exports = router;

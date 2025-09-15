@@ -111,9 +111,103 @@ const changeSeat = (reservationId, oldSeatId, newSeatId, callback) => {
     });
 };
 
+const getFullReservationsByExternalUserId = (externalUserId, callback) => {
+    const sql = `
+        SELECT 
+            r.reservationId,
+            r.externalUserId,
+            r.externalFlightId,
+            r.seatId,
+            r.status,
+            r.createdAt,
+            r.updatedAt,
+            r.totalPrice,
+            f.flightDate,
+            f.aircraftModel,
+            f.origin,
+            f.destination,
+            f.aircraft
+        FROM reservations r
+        LEFT JOIN flights f ON r.externalFlightId = f.externalFlightId
+        WHERE r.externalUserId = ?
+        AND (r.status = 'PAID' OR r.status = 'CANCELLED')
+    `;
+    db.query(sql, [externalUserId], async (err, reservations) => {
+        if (err) return callback(err);
+
+        try {
+            const results = await Promise.all(reservations.map(async (reservation) => {
+                let seatIds = [];
+                if (reservation.seatId) {
+                    if (Array.isArray(reservation.seatId)) {
+                        seatIds = reservation.seatId.map(id => Number(id)).filter(id => !isNaN(id));
+                    } else if (typeof reservation.seatId === 'string') {
+                        try {
+                            const parsed = JSON.parse(reservation.seatId);
+                            if (Array.isArray(parsed)) {
+                                seatIds = parsed.map(id => Number(id)).filter(id => !isNaN(id));
+                            } else if (!isNaN(parsed)) {
+                                seatIds = [Number(parsed)];
+                            }
+                        } catch {
+                            const matches = reservation.seatId.match(/\d+/g);
+                            if (matches) {
+                                seatIds = matches.map(id => Number(id)).filter(id => !isNaN(id));
+                            } else if (!isNaN(reservation.seatId)) {
+                                seatIds = [Number(reservation.seatId)];
+                            }
+                        }
+                    } else if (!isNaN(reservation.seatId)) {
+                        seatIds = [Number(reservation.seatId)];
+                    }
+                }
+
+                let seats = [];
+                if (seatIds.length > 0) {
+                    const seatSql = `
+                        SELECT seatId, seatNumber, category AS cabinName, price
+                        FROM seats
+                        WHERE seatId IN (${seatIds.map(() => '?').join(',')})
+                    `;
+                    const seatResult = await db.promise().query(seatSql, seatIds);
+                    seats = seatResult[0];
+                }
+
+                let origin = {};
+                let destination = {};
+                try { origin = reservation.origin ? JSON.parse(reservation.origin) : {}; } catch {}
+                try { destination = reservation.destination ? JSON.parse(reservation.destination) : {}; } catch {}
+
+                return {
+                    reservationId: reservation.reservationId,
+                    externalUserId: reservation.externalUserId,
+                    externalFlightId: reservation.externalFlightId,
+                    flightData: {
+                        flightNumber: reservation.aircraft,
+                        origin,
+                        destination,
+                        date: reservation.flightDate,
+                        aircraftModel: reservation.aircraftModel,
+                    },
+                    seats,
+                    totalPrice: Number(reservation.totalPrice),
+                    status: reservation.status,
+                    createdAt: reservation.createdAt,
+                    updatedAt: reservation.updatedAt,
+                };
+            }));
+
+            callback(null, results);
+        } catch (error) {
+            callback(error);
+        }
+    });
+};
+
 module.exports = {
     createReservation,
     cancelReservation,
-    changeSeat
-    ,getReservationsByExternalUserId
+    changeSeat,
+    getReservationsByExternalUserId,
+    getFullReservationsByExternalUserId
 };
