@@ -3,6 +3,7 @@ const db = require('../config/db');
 
 
 
+
 const getAllSeats = (externalFlightId, callback) => {
     const query = 'SELECT seatId, externalFlightId, seatNumber, category, status, price FROM seats WHERE externalFlightId = ?';
     db.query(query, [externalFlightId], (err, results) => {
@@ -11,6 +12,21 @@ const getAllSeats = (externalFlightId, callback) => {
     });
 };
 
+
+// Obtiene los asientos reservados o confirmados junto con externalFlightId y aircraft
+const getReservedOrConfirmedSeats = (externalFlightId, callback) => {
+    const query = `
+        SELECT s.*, f.externalFlightId, f.aircraft
+        FROM seats s
+        JOIN flights f ON s.externalFlightId = f.externalFlightId
+        WHERE s.status IN ('RESERVED', 'CONFIRMED')
+        AND s.externalFlightId = ?
+    `;
+    db.query(query, [externalFlightId], (err, results) => {
+        if (err) return callback(err);
+        callback(null, results);
+    });
+};
 const reserveSeat = (externalFlightId, seatId, callback) => {
     const query = `UPDATE seats SET status = 'RESERVED' WHERE externalFlightId = ? AND seatId = ? AND status = 'AVAILABLE'`;
     db.query(query, [externalFlightId, seatId], (err, result) => {
@@ -45,8 +61,10 @@ const timeoutOrPaymentFailure = (externalFlightId, seatId, callback) => {
 };
 
 
+
 module.exports = {
     getAllSeats,
+    getReservedOrConfirmedSeats,
     reserveSeat,
     cancelSeat,
     timeoutOrPaymentFailure

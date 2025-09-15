@@ -1,12 +1,13 @@
 const seatsModel = require('../models/seatsModel');
 
-// Get all seats
+
+// Get reserved or confirmed seats with flight info
 exports.getAllSeats = (req, res) => {
     const externalFlightId = req.params.externalFlightId || req.query.externalFlightId;
     if (!externalFlightId) {
         return res.status(400).json({ error: 'Missing externalFlightId' });
     }
-    seatsModel.getAllSeats(externalFlightId, (err, seats) => {
+    seatsModel.getReservedOrConfirmedSeats(externalFlightId, (err, seats) => {
         if (err) {
             console.error(err);
             return res.status(500).json({ error: 'Error getting seats' });
@@ -14,7 +15,6 @@ exports.getAllSeats = (req, res) => {
         res.json(seats);
     });
 };
-
 
 // Obtener asientos libres
 exports.getAsientosLibres = (req, res) => {
