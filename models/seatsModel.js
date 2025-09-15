@@ -1,31 +1,35 @@
 const db = require('../config/db');
 
 
-
-
-
-const getAllSeats = (externalFlightId, callback) => {
-    const query = 'SELECT seatId, externalFlightId, seatNumber, category, status, price FROM seats WHERE externalFlightId = ?';
-    db.query(query, [externalFlightId], (err, results) => {
-        if (err) return callback(err);
-        callback(null, results);
-    });
-};
-
-
 // Obtiene los asientos reservados o confirmados junto con externalFlightId y aircraft
 const getReservedOrConfirmedSeats = (externalFlightId, callback) => {
     const query = `
-        SELECT s.*, f.externalFlightId, f.aircraft
+        SELECT s.seatId, s.status, f.externalFlightId, f.aircraft
         FROM seats s
         JOIN flights f ON s.externalFlightId = f.externalFlightId
         WHERE s.status IN ('RESERVED', 'CONFIRMED')
         AND s.externalFlightId = ?
     `;
-    db.query(query, [externalFlightId], (err, results) => {
-        if (err) return callback(err);
-        callback(null, results);
-    });
+        db.query(query, [externalFlightId], (err, results) => {
+            if (err) return callback(err);
+            // Agrupar resultados
+            const occupiedSeats = [];
+            const reservedSeats = [];
+            let airCraftType = null;
+            let flightId = null;
+            results.forEach(row => {
+                if (row.status === 'CONFIRMED') occupiedSeats.push(row.seatId);
+                if (row.status === 'RESERVED') reservedSeats.push(row.seatId);
+                airCraftType = row.aircraft;
+                flightId = row.externalFlightId;
+            });
+            callback(null, {
+                flightId,
+                airCraftType,
+                occupiedSeats,
+                reservedSeats
+            });
+        });
 };
 const reserveSeat = (externalFlightId, seatId, callback) => {
     const query = `UPDATE seats SET status = 'RESERVED' WHERE externalFlightId = ? AND seatId = ? AND status = 'AVAILABLE'`;
@@ -63,7 +67,6 @@ const timeoutOrPaymentFailure = (externalFlightId, seatId, callback) => {
 
 
 module.exports = {
-    getAllSeats,
     getReservedOrConfirmedSeats,
     reserveSeat,
     cancelSeat,
