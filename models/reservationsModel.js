@@ -78,19 +78,18 @@ const cancelReservation = (reservationId, amount, callback) => {
             return callback(null, { success: false, message: 'Reservation does not exist.' });
         }
         const reservation = reservationRows[0];
-        if (reservation.status === 'CANCELLED' || reservation.status === 'PENDING') {
-            // No crear evento de pago si la reserva ya está cancelada
-            return callback(null, { success: false, message: 'Reservation is already cancelled. No payment event created.' });
+        if (reservation.status !== 'PAID') {
+            return callback(null, { success: false, message: 'Only PAID reservations can be cancelled.' });
         }
-        const pendingQuery = `UPDATE reservations SET status = 'PENDING' WHERE reservationId = ?`;
-        // Solo actualizar la reserva a PENDING y registrar el evento de pago, sin liberar el asiento
-        db.query(pendingQuery, [reservationId], (err2, result2) => {
+        if (amount == null || isNaN(amount)) {
+            return callback(null, { success: false, message: 'Amount is required and must be a number.' });
+        }
+
+        // Solo actualizar la reserva, sin tocar paymentEvents
+        const cancelQuery = `UPDATE reservations SET status = 'PENDING', totalPrice = ? WHERE reservationId = ?`;
+        db.query(cancelQuery, [amount, reservationId], (err2) => {
             if (err2) return callback(err2);
-            const eventoQuery = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
-            db.query(eventoQuery, [reservationId, reservation.externalUserId, amount], (err4, resultEvento) => {
-                if (err4) return callback(err4);
-                callback(null, { success: true, message: 'Reservation set to pending and payment event logged.' });
-            });
+            callback(null, { success: true, message: 'Reservation status changed to PENDING.' });
         });
     });
 };
