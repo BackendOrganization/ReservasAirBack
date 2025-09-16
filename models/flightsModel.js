@@ -57,7 +57,7 @@ const cancelReservationsByFlight = (externalFlightId, callback) => {
             const events = [];
             let pending = reservations.length;
             reservations.forEach(r => {
-                const eventSql = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'CANCELLED', ?)`;
+                const eventSql = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'REFUND', ?)`;
                 db.query(eventSql, [r.reservationId, r.externalUserId, r.totalPrice], (err3, result) => {
                     if (err3) return callback(err3);
                     events.push({ reservationId: r.reservationId, eventId: result.insertId });
