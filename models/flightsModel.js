@@ -40,4 +40,33 @@ const insertFlight = (flightData, callback) => {
     });
 };
 
-module.exports = { insertFlight };
+// Nuevo método: cancela todas las reservas de un vuelo y crea eventos de pago cancelados
+const cancelReservationsByFlight = (externalFlightId, callback) => {
+    const selectSql = `
+        SELECT r.reservationId, r.externalUserId, r.seatId, r.totalPrice
+        FROM reservations r
+        WHERE r.externalFlightId = ? AND r.status != 'CANCELLED'
+    `;
+    db.query(selectSql, [externalFlightId], (err, reservations) => {
+        if (err) return callback(err);
+        if (reservations.length === 0) return callback(null, { updated: 0, events: [] });
+        const reservationIds = reservations.map(r => r.reservationId);
+        const updateSql = `UPDATE reservations SET status = 'CANCELLED' WHERE reservationId IN (?)`;
+        db.query(updateSql, [reservationIds], (err2) => {
+            if (err2) return callback(err2);
+            const events = [];
+            let pending = reservations.length;
+            reservations.forEach(r => {
+                const eventSql = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'CANCELLED', ?)`;
+                db.query(eventSql, [r.reservationId, r.externalUserId, r.totalPrice], (err3, result) => {
+                    if (err3) return callback(err3);
+                    events.push({ reservationId: r.reservationId, eventId: result.insertId });
+                    pending--;
+                    if (pending === 0) callback(null, { updated: reservations.length, events });
+                });
+            });
+        });
+    });
+};
+
+module.exports = { insertFlight, cancelReservationsByFlight };
