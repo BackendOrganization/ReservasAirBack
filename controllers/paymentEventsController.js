@@ -32,3 +32,16 @@ exports.cancelPayment = (req, res) => {
         res.json(result);
     });
 };
+
+exports.failPayment = (req, res) => {
+    const paymentData = req.body;
+    if (!paymentData.paymentStatus || !paymentData.reservationId || !paymentData.externalUserId) {
+        return res.status(400).json({ error: 'Missing required payment data' });
+    }
+    paymentEventsModel.createPaymentEventAndFailReservation(paymentData, (err, result) => {
+        if (err) {
+            return res.status(500).json({ error: 'Error processing payment event', details: err });
+        }
+        res.status(201).json({ message: 'Payment event created and reservation marked as FAILED', ...result });
+    });
+};

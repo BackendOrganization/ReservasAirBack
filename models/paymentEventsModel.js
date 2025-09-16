@@ -116,7 +116,46 @@ const cancelPayment = (reservationId, externalUserId, callback) => {
     });
 };
 
+const createPaymentEventAndFailReservation = (paymentData, callback) => {
+    // Verifica si ya existe un evento FAILED para esa reserva
+    const checkSql = `
+        SELECT COUNT(*) AS count
+        FROM paymentEvents
+        WHERE reservationId = ? AND paymentStatus = 'FAILED'
+    `;
+    db.query(checkSql, [paymentData.reservationId], (err, results) => {
+        if (err) return callback(err);
+        if (results[0].count > 0) {
+            return callback({ message: 'A FAILED payment event already exists for this reservationId.' });
+        }
+
+        // Crear el evento de pago
+        const insertEventSql = `
+            INSERT INTO paymentEvents (paymentStatus, reservationId, externalUserId)
+            VALUES (?, ?, ?)
+        `;
+        db.query(
+            insertEventSql,
+            [paymentData.paymentStatus, paymentData.reservationId, paymentData.externalUserId],
+            (err, eventResult) => {
+                if (err) return callback(err);
+
+                // Marcar la reserva como FAILED solo si no está ya en ese estado
+                const updateReservationSql = `
+                    UPDATE reservations SET status = 'FAILED'
+                    WHERE reservationId = ? AND status != 'FAILED'
+                `;
+                db.query(updateReservationSql, [paymentData.reservationId], (err, resResult) => {
+                    if (err) return callback(err);
+                    callback(null, { paymentEventId: eventResult.insertId, reservationId: paymentData.reservationId });
+                });
+            }
+        );
+    });
+};
+
 module.exports = {
     confirmPayment,
-    cancelPayment
+    cancelPayment,
+    createPaymentEventAndFailReservation
 };
