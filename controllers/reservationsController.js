@@ -32,14 +32,15 @@ exports.changeSeat = (req, res) => {
 
 
 exports.createReservation = (req, res) => {
+    const reservationId = req.params.reservationId;
     const externalUserId = req.body.externalUserId;
     const externalFlightId = req.body.externalFlightId;
-    const seatIds = req.body.seatIds; // <-- Cambiado de seatId a seatIds
+    const seatIds = req.body.seatIds;
     const amount = req.body.amount;
-    if (!externalUserId || !externalFlightId || !Array.isArray(seatIds) || seatIds.length === 0 || amount == null) {
-        return res.status(400).json({ error: 'Missing required fields: externalUserId, externalFlightId, seatIds (array), amount' });
+    if (!reservationId || !externalUserId || !externalFlightId || !Array.isArray(seatIds) || seatIds.length === 0 || amount == null) {
+        return res.status(400).json({ error: 'Missing required fields: reservationId (URL), externalUserId, externalFlightId, seatIds (array), amount' });
     }
-    reservationsModel.createReservation(externalUserId, externalFlightId, seatIds, amount, (err, result) => {
+    reservationsModel.createReservation(reservationId, externalUserId, externalFlightId, seatIds, amount, (err, result) => {
         if (err) {
             console.error(err);
             return res.status(500).json({ error: 'Seat is already reserved' });
@@ -49,10 +50,10 @@ exports.createReservation = (req, res) => {
 };
 
 exports.cancelReservation = (req, res) => {
-    const reservationId = req.body.reservationId;
+    const reservationId = req.params.reservationId;
     const amount = req.body.amount;
     if (!reservationId || amount == null) {
-        return res.status(400).json({ error: 'Missing required fields: reservationId, amount' });
+        return res.status(400).json({ error: 'Missing required fields: reservationId (URL), amount' });
     }
     reservationsModel.cancelReservation(reservationId, amount, (err, result) => {
         if (err) {
