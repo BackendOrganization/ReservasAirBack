@@ -8,6 +8,9 @@
   "jest": {
     "setupFilesAfterEnv": [
       "./jest.setup.js"
+    ],
+    "testMatch": [
+      "**/tests/**/*.test.js"
     ]
   },
   "keywords": [],
