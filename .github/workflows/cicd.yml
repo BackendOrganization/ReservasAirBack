@@ -21,8 +21,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # - name: Run tests
-      #   run: npm test --if-present
+      - name: Run tests
+        run: npm test --if-present
 
   deploy:
     name: Deploy to Render
