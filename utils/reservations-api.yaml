@@ -1,0 +1,683 @@
+openapi: 3.0.0
+info:
+  title: Reservations API
+  description: API for managing reservations, payments, and flights.
+  version: 1.0.1
+servers:
+  - url: http://localhost:3000
+
+tags:
+  - name: Seats
+    description: Endpoints for seat management
+  - name: Reservations
+    description: Endpoints for reservation management
+  - name: Payment
+    description: Endpoints for payment management
+  - name: Flights
+    description: Endpoints for flight management
+
+paths:
+  /seats/flight/{externalFlightId}:
+    get:
+      tags: [Seats]
+      summary: Get reserved or confirmed seats for a flight
+      parameters:
+        - name: externalFlightId
+          in: path
+          required: true
+          description: The external ID of the flight
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Reserved and confirmed seats summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flightId:
+                    type: integer
+                  airCraftType:
+                    type: string
+                  occupiedSeats:
+                    type: array
+                    items:
+                      type: integer
+                  reservedSeats:
+                    type: array
+                    items:
+                      type: integer
+              examples:
+                SeatsSummaryExample:
+                  summary: Example output
+                  value:
+                    flightId: 1
+                    airCraftType: "E190"
+                    occupiedSeats: [11,12,18,19,20]
+                    reservedSeats: [13,14,15]
+        '400':
+          description: Missing externalFlightId
+        '500':
+          description: Error getting seats
+
+  /reservation/book/{externalFlightId}/{externalUserId}:
+    post:
+      tags: [Reservations]
+      summary: Book a seat for a specific flight
+      parameters:
+        - name: externalFlightId
+          in: path
+          required: true
+          description: The external ID of the flight
+          schema:
+            type: integer
+            format: int64
+        - name: externalUserId
+          in: path
+          required: true
+          description: The external ID of the user
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                seatIds:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+                amount:
+                  type: number
+              required:
+                - seatIds
+                - amount
+            examples:
+              CreateReservation:
+                summary: Example request body
+                value:
+                  seatIds: [18, 19, 20]
+                  amount: 1200
+      responses:
+        '201':
+          description: Reservation created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              examples:
+                ReservationCreated:
+                  summary: Reservation created message
+                  value:
+                    message: "Reservation created successfully"
+        '400':
+          description: Missing required fields
+        '500':
+          description: Seat is already reserved
+
+  /reservation/cancel/{reservationId}:
+    post:
+      tags: [Reservations]
+      summary: Cancel a reservation
+      parameters:
+        - name: reservationId
+          in: path
+          required: true
+          description: The ID of the reservation
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+              required:
+                - amount
+            examples:
+              CancelReservation:
+                summary: Cancel reservation and initiate refund
+                value:
+                  amount: 100.00
+      responses:
+        '200':
+          description: Reservation cancelled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              examples:
+                ReservationCancelled:
+                  summary: Reservation cancelled message
+                  value:
+                    message: "Reservation cancelled successfully"
+        '400':
+          description: Missing required fields
+        '500':
+          description: Error cancelling reservation
+
+  /reservation/user/{externalUserId}:
+    get:
+      tags: [Reservations]
+      summary: Get reservations by external user ID
+      parameters:
+        - name: externalUserId
+          in: path
+          required: true
+          description: The external ID of the user
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: A list of reservations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FullReservation'
+              examples:
+                FullReservationExample:
+                  summary: Example of full reservation response
+                  value:
+                    - reservationId: 19
+                      externalUserId: 1
+                      externalFlightId: 1
+                      flightData:
+                        flightNumber: "E190"
+                        origin: {}
+                        destination: {}
+                        flightDate: "2025-09-17"
+                        aircraftModel: "Airbus A330-200"
+                      seats:
+                        - seatId: 18
+                          seatNumber: "4B"
+                          cabinName: "ECONOMY"
+                          price: "400.00"
+                        - seatId: 19
+                          seatNumber: "5A"
+                          cabinName: "ECONOMY"
+                          price: "400.00"
+                        - seatId: 20
+                          seatNumber: "5B"
+                          cabinName: "ECONOMY"
+                          price: "400.00"
+                      totalPrice: 1200
+                      status: "CANCELLED"
+                      createdAt: "2025-09-15T20:18:19.000Z"
+                      updatedAt: "2025-09-15T20:26:13.000Z"
+        '400':
+          description: Missing required parameter
+        '500':
+          description: Error fetching reservations
+
+  # --- PAYMENT ---
+  /payment/confirm:
+    post:
+      tags: [Payment]
+      summary: Confirm a payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                paymentStatus:
+                  $ref: '#/components/schemas/PaymentStatus'
+                reservationId:
+                  type: integer
+                  format: int64
+                externalUserId:
+                  type: integer
+                  format: int64
+              required:
+                - paymentStatus
+                - reservationId
+                - externalUserId
+            examples:
+              ConfirmedPayment:
+                summary: Confirmed payment example
+                value:
+                  paymentStatus: "SUCCESS"
+                  reservationId: 15
+                  externalUserId: 5
+      responses:
+        '200':
+          description: Payment confirmed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              examples:
+                PaymentConfirmed:
+                  summary: Payment confirmed message
+                  value:
+                    message: "Payment confirmed successfully"
+        '400':
+          description: Missing required fields or invalid payment status
+        '500':
+          description: Error confirming payment
+
+  /payment/cancel:
+    post:
+      tags: [Payment]
+      summary: Cancel a payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reservationId:
+                  type: integer
+                  format: int64
+                externalUserId:
+                  type: integer
+                  format: int64
+              required:
+                - reservationId
+                - externalUserId
+            examples:
+              CancelPayment:
+                summary: Cancel payment example
+                value:
+                  paymentStatus: "REFUND"
+                  reservationId: 11
+                  externalUserId: 1
+      responses:
+        '200':
+          description: Payment cancelled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              examples:
+                PaymentCancelled:
+                  summary: Payment cancelled message
+                  value:
+                    message: "Payment cancelled successfully"
+        '400':
+          description: Missing required fields
+        '500':
+          description: Error cancelling payment
+
+  /payment/fail:
+    post:
+      tags: [Payment]
+      summary: Mark payment as failed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                paymentStatus:
+                  $ref: '#/components/schemas/PaymentStatus'
+                reservationId:
+                  type: integer
+                  format: int64
+                externalUserId:
+                  type: integer
+                  format: int64
+              required:
+                - paymentStatus
+                - reservationId
+                - externalUserId
+            examples:
+              FailedPayment:
+                summary: Failed payment example
+                value:
+                  paymentStatus: "FAILED"
+                  reservationId: 11
+                  externalUserId: 1
+      responses:
+        '201':
+          description: Payment event created and reservation marked as FAILED
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              examples:
+                PaymentFailed:
+                  summary: Payment failed message
+                  value:
+                    message: "Payment event created and reservation marked as FAILED"
+        '400':
+          description: Missing required payment data
+        '500':
+          description: Error processing payment event
+
+  # --- FLIGHTS ---
+  /flights/ingest:
+    post:
+      tags: [Flights]
+      summary: Ingest a new flight
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlightInput'
+            examples:
+              ExampleFlight:
+                summary: Example flight input
+                value:
+                  id: 1001
+                  flightNumber: "AA1234"
+                  origin:
+                    code: "EZE"
+                    city: "Buenos Aires"
+                    time: "14:30"
+                  destination:
+                    code: "SAME"
+                    city: "Mendoza"
+                    time: "16:30"
+                  aircraft: "A330"
+                  aircraftModel: "Airbus A330-200"
+                  flighDate: "2026-01-15"
+                  duration: "2h 00m"
+      responses:
+        '201':
+          description: Flight inserted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightInput'
+              examples:
+                FlightCreated:
+                  summary: Flight created response
+                  value:
+                    id: 1001
+                    flightNumber: "AA1234"
+                    origin:
+                      code: "EZE"
+                      city: "Buenos Aires"
+                      time: "14:30"
+                    destination:
+                      code: "SAME"
+                      city: "Mendoza"
+                      time: "16:30"
+                    aircraft: "A330"
+                    aircraftModel: "Airbus A330-200"
+                    flighDate: "2026-01-15"
+                    duration: "2h 00m"
+        '400':
+          description: Missing required flight data
+        '500':
+          description: Error inserting flight
+
+  /flights/{externalFlightId}/cancel:
+    post:
+      tags: [Flights]
+      summary: Cancel reservations for a flight
+      parameters:
+        - name: externalFlightId
+          in: path
+          required: true
+          description: The external ID of the flight
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Reservations cancelled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Missing externalFlightId
+        '500':
+          description: Error cancelling reservations
+
+  /flights:
+    get:
+      tags: [Flights]
+      summary: Get all flights
+      responses:
+        '200':
+          description: Flights retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  count:
+                    type: integer
+                  flights:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        externalFlightId:
+                          type: integer
+                        freeSeats:
+                          type: integer
+                        occupiedSeats:
+                          type: integer
+                        aircraft:
+                          type: string
+                        origin:
+                          $ref: '#/components/schemas/Location'
+                        destination:
+                          $ref: '#/components/schemas/Location'
+                        aircraftModel:
+                          type: string
+                        flightDate:
+                          type: string
+                          format: date-time
+                        duration:
+                          type: string
+              examples:
+                FlightsExample:
+                  summary: Example flights response
+                  value:
+                    message: "Flights retrieved successfully"
+                    count: 2
+                    flights:
+                      - externalFlightId: 1001
+                        freeSeats: 200
+                        occupiedSeats: 0
+                        aircraft: "A330"
+                        origin:
+                          city: "Buenos Aires"
+                          code: "EZE"
+                          time: "14:30"
+                        destination:
+                          city: "Mendoza"
+                          code: "SAME"
+                          time: "16:30"
+                        aircraftModel: "Airbus A330-200"
+                        flightDate: "2026-01-15T00:00:00.000Z"
+                        duration: "2h 00m"
+                      - externalFlightId: 1002
+                        freeSeats: 180
+                        occupiedSeats: 0
+                        aircraft: "B737"
+                        origin:
+                          city: "Buenos Aires"
+                          code: "EZE"
+                          time: "08:15"
+                        destination:
+                          city: "Córdoba"
+                          code: "COR"
+                          time: "09:45"
+                        aircraftModel: "Boeing 737-800"
+                        flightDate: "2025-12-16T00:00:00.000Z"
+                        duration: "1h 30m"
+
+components:
+  schemas:
+    Seat:
+      type: object
+      properties:
+        seatId:
+          type: integer
+          format: int64
+        externalFlightId:
+          type: integer
+          format: int64
+        seatNumber:
+          type: string
+        category:
+          type: string
+          enum: [ECONOMY, BUSINESS, FIRST]
+        status:
+          type: string
+          enum: [AVAILABLE, RESERVED, CONFIRMED]
+        price:
+          type: number
+          format: float
+    Reservation:
+      type: object
+      properties:
+        reservationId:
+          type: integer
+          format: int64
+        externalUserId:
+          type: integer
+          format: int64
+        externalFlightId:
+          type: integer
+          format: int64
+        seatId:
+          type: array
+          items:
+            type: integer
+            format: int64
+        status:
+          type: string
+          enum: [PENDING, PAID, CANCELLED, FAILED]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        totalPrice:
+          type: number
+          format: float
+    FullReservation:
+      type: object
+      properties:
+        reservationId:
+          type: integer
+        externalUserId:
+          type: integer
+        externalFlightId:
+          type: integer
+        flightData:
+          type: object
+          properties:
+            flightNumber:
+              type: string
+            origin:
+              $ref: '#/components/schemas/Location'
+            destination:
+              $ref: '#/components/schemas/Location'
+            flightDate:
+              type: string
+              format: date
+              example: "2025-09-17"
+            aircraftModel:
+              type: string
+              example: "Airbus A330-200"
+        seats:
+          type: array
+          items:
+            type: object
+            properties:
+              seatId:
+                type: integer
+              seatNumber:
+                type: string
+              cabinName:
+                type: string
+              price:
+                type: string
+        totalPrice:
+          type: number
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PaymentStatus:
+      type: string
+      enum: [SUCCESS, FAILED, PENDING, REFUND]
+    FlightInput:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        flightNumber:
+          type: string
+        origin:
+          $ref: '#/components/schemas/Location'
+        destination:
+          $ref: '#/components/schemas/Location'
+        aircraft:
+          type: string
+        aircraftModel:
+          type: string
+        flighDate:
+          type: string
+          format: date
+        duration:
+          type: string
+      required:
+        - id
+        - flightNumber
+        - origin
+        - destination
+        - aircraft
+        - aircraftModel
+        - flighDate
+        - duration
+    Location:
+      type: object
+      properties:
+        code:
+          type: string
+        city:
+          type: string
+        time:
+          type: string
