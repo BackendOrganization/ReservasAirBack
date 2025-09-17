@@ -38,26 +38,35 @@ const createReservation = (externalUserId, externalFlightId, seatIds, amount, ca
             });
         }
 
-        // Guardar array como JSON en seatId (aunque el nombre sea seatId)
+        let completed = 0;
+        let hasError = false;
+        let reservationId = null;
         const status = 'PENDING';
         const seatIdJson = JSON.stringify(seatIds);
-        const insertQuery = `INSERT INTO reservations (externalUserId, externalFlightId, seatId, status) VALUES (?, ?, ?, ?)`;
-        db.query(insertQuery, [externalUserId, externalFlightId, seatIdJson, status], (err2, result) => {
+        // Agrega totalPrice al insert
+        const insertQuery = `INSERT INTO reservations (externalUserId, externalFlightId, seatId, status, totalPrice) VALUES (?, ?, ?, ?, ?)`;
+        db.query(insertQuery, [externalUserId, externalFlightId, seatIdJson, status, amount], (err2, result) => {
             if (err2) return callback(err2);
 
-            // Actualizar el estado de cada asiento
-            let completed = 0;
-            let hasError = false;
+            reservationId = result.insertId;
+
             seatIds.forEach((seatId) => {
-                asientosModel.reserveSeat(externalFlightId, seatId, (err3) => {
+                asientosModel.reserveSeat(externalFlightId, seatId, (err3, reserveResult) => {
                     if (hasError) return;
-                    if (err3) {
+                    if (err3 || !reserveResult || reserveResult.success === false) {
                         hasError = true;
-                        return callback(err3);
+                        // Elimina la reserva creada si algún asiento falla
+                        const deleteQuery = `DELETE FROM reservations WHERE reservationId = ?`;
+                        db.query(deleteQuery, [reservationId], () => {
+                            return callback(null, { 
+                                success: false, 
+                                message: `Seat ${seatId} is not available or does not exist. Reservation cancelled.` 
+                            });
+                        });
+                        return;
                     }
                     completed++;
-                    if (completed === seatIds.length) {
-                        const reservationId = result.insertId;
+                    if (completed === seatIds.length && !hasError) {
                         const eventoQuery = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
                         db.query(eventoQuery, [reservationId, externalUserId, amount], (err4) => {
                             if (err4) return callback(err4);
@@ -85,11 +94,20 @@ const cancelReservation = (reservationId, amount, callback) => {
             return callback(null, { success: false, message: 'Amount is required and must be a number.' });
         }
 
-        // Solo actualizar la reserva, sin tocar paymentEvents
+        // Actualizar la reserva y crear el evento PENDING
         const cancelQuery = `UPDATE reservations SET status = 'PENDING', totalPrice = ? WHERE reservationId = ?`;
         db.query(cancelQuery, [amount, reservationId], (err2) => {
             if (err2) return callback(err2);
-            callback(null, { success: true, message: 'Reservation status changed to PENDING.' });
+
+            // Crear evento PENDING en paymentEvents
+            const pendingEventQuery = `
+                INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount)
+                VALUES (?, ?, 'PENDING', ?)
+            `;
+            db.query(pendingEventQuery, [reservationId, reservation.externalUserId, amount], (err3) => {
+                if (err3) return callback(err3);
+                callback(null, { success: true, message: 'Reservation status changed to PENDING and payment event created.' });
+            });
         });
     });
 };
@@ -203,6 +221,15 @@ const getFullReservationsByExternalUserId = (externalUserId, callback) => {
         }
     });
 };
+
+module.exports = {
+    createReservation,
+    cancelReservation,
+    changeSeat,
+    getReservationsByExternalUserId,
+    getFullReservationsByExternalUserId
+};
+
 
 module.exports = {
     createReservation,

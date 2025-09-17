@@ -8,7 +8,7 @@ router.post('/reservation/change-seat', reservationsController.changeSeat);
 
 
 // Ruta para reservar un asiento disponible de un vuelo específico
-router.post('/reservation/book/:reservationId', reservationsController.createReservation);
+router.post('/reservation/book/:externalFlightId/:externalUserId', reservationsController.createReservation);
 
 // Ruta para cancelar una reserva (pasar de confirmado a disponible)
 router.post('/reservation/cancel/:reservationId', reservationsController.cancelReservation);
