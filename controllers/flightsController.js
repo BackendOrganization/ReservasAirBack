@@ -14,6 +14,36 @@ exports.ingestFlight = (req, res) => {
     });
 };
 
+// Obtener todos los vuelos
+exports.getAllFlights = (req, res) => {
+    flightsModel.getAllFlights((err, results) => {
+        if (err) {
+            console.error('Error fetching flights:', err);
+            return res.status(500).json({ error: 'Error fetching flights', details: err });
+        }
+        
+        // Parsear los campos JSON (origin y destination) para cada vuelo
+        const flights = results.map(flight => {
+            try {
+                return {
+                    ...flight,
+                    origin: typeof flight.origin === 'string' ? JSON.parse(flight.origin) : flight.origin,
+                    destination: typeof flight.destination === 'string' ? JSON.parse(flight.destination) : flight.destination
+                };
+            } catch (parseErr) {
+                console.error('Error parsing flight data for flight ID:', flight.id, parseErr);
+                return flight; // Devolver el vuelo sin parsear si hay error
+            }
+        });
+        
+        res.status(200).json({
+            message: 'Flights retrieved successfully',
+            count: flights.length,
+            flights: flights
+        });
+    });
+};
+
 // Nuevo método: cancela todas las reservas de un vuelo y crea eventos de pago cancelados
 exports.cancelFlightReservations = (req, res) => {
     const externalFlightId = req.params.externalFlightId;

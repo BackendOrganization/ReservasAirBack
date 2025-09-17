@@ -69,4 +69,10 @@ const cancelReservationsByFlight = (externalFlightId, callback) => {
     });
 };
 
-module.exports = { insertFlight, cancelReservationsByFlight };
+// Obtener todos los vuelos
+const getAllFlights = (callback) => {
+    const sql = 'SELECT * FROM flights';
+    db.query(sql, callback);
+};
+
+module.exports = { insertFlight, cancelReservationsByFlight, getAllFlights };
