@@ -30,7 +30,7 @@ const insertFlight = (flightData, callback) => {
                 flightData.aircraftModel,
                 JSON.stringify(flightData.origin),
                 JSON.stringify(flightData.destination),
-                flightData.date,
+                flightData.flightDate,
                 flightData.duration,
                 flightData.freeSeats || 0,
                 0 // occupiedSeats lo manejamos nosotros, siempre inicia en 0
