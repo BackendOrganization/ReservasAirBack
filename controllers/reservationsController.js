@@ -1,14 +1,14 @@
 exports.getReservationsByExternalUserId = (req, res) => {
 	const externalUserId = req.params.externalUserId;
 	if (!externalUserId) {
-		return res.status(400).json({ error: 'Missing required parameter: externalUserId' });
+		return res.status(400).json({ error: 'Missing required parameter: externalUserId' }); // 400
 	}
 	reservationsModel.getReservationsByExternalUserId(externalUserId, (err, results) => {
 		if (err) {
 			console.error(err);
-			return res.status(500).json({ error: 'Error fetching reservations' });
+			return res.status(500).json({ error: 'Error fetching reservations' }); // 500
 		}
-		res.json(results);
+		res.status(200).json(results); // 200
 	});
 };
 const reservationsModel = require('../models/reservationsModel');
@@ -19,33 +19,32 @@ exports.changeSeat = (req, res) => {
 	const oldSeatId = req.body.oldSeatId;
 	const newSeatId = req.body.newSeatId;
 	if (!reservationId || !oldSeatId || !newSeatId) {
-		return res.status(400).json({ error: 'Missing required fields' });
+		return res.status(400).json({ error: 'Missing required fields' }); // 400
 	}
 	reservationsModel.changeSeat(reservationId, oldSeatId, newSeatId, (err, result) => {
 		if (err) {
 			console.error(err);
-			return res.status(500).json({ error: 'Error changing seat for reservation' });
+			return res.status(500).json({ error: 'Error changing seat for reservation' }); // 500
 		}
-		res.json(result);
+		res.status(200).json(result); // 200
 	});
 };
 
 
 exports.createReservation = (req, res) => {
-    const reservationId = req.params.reservationId;
-    const externalUserId = req.body.externalUserId;
-    const externalFlightId = req.body.externalFlightId;
+    const externalFlightId = req.params.externalFlightId;
+    const externalUserId = req.params.externalUserId;
     const seatIds = req.body.seatIds;
     const amount = req.body.amount;
-    if (!reservationId || !externalUserId || !externalFlightId || !Array.isArray(seatIds) || seatIds.length === 0 || amount == null) {
-        return res.status(400).json({ error: 'Missing required fields: reservationId (URL), externalUserId, externalFlightId, seatIds (array), amount' });
+    if (!externalUserId || !externalFlightId || !Array.isArray(seatIds) || seatIds.length === 0 || amount == null) {
+        return res.status(400).json({ error: 'Missing required fields: externalUserId (URL), externalFlightId (URL), seatIds (array), amount' }); // 400
     }
-    reservationsModel.createReservation(reservationId, externalUserId, externalFlightId, seatIds, amount, (err, result) => {
+    reservationsModel.createReservation(externalUserId, externalFlightId, seatIds, amount, (err, result) => {
         if (err) {
             console.error(err);
-            return res.status(500).json({ error: 'Seat is already reserved' });
+            return res.status(500).json({ error: 'Seat is already reserved' }); // 500
         }
-        res.json(result);
+        res.status(201).json(result); // 201
     });
 };
 
@@ -53,27 +52,28 @@ exports.cancelReservation = (req, res) => {
     const reservationId = req.params.reservationId;
     const amount = req.body.amount;
     if (!reservationId || amount == null) {
-        return res.status(400).json({ error: 'Missing required fields: reservationId (URL), amount' });
+        return res.status(400).json({ error: 'Missing required fields: reservationId (URL), amount' }); // 400
     }
     reservationsModel.cancelReservation(reservationId, amount, (err, result) => {
         if (err) {
             console.error(err);
-            return res.status(500).json({ error: 'Error cancelling reservation' });
+            return res.status(500).json({ error: 'Error cancelling reservation' }); // 500
         }
-        res.json(result);
+        res.status(200).json(result); // 200
     });
 };
 
 exports.getFullReservationsByExternalUserId = (req, res) => {
     const externalUserId = req.params.externalUserId;
     if (!externalUserId) {
-        return res.status(400).json({ error: 'Missing required parameter: externalUserId' });
+        return res.status(400).json({ error: 'Missing required parameter: externalUserId' }); // 400
     }
     reservationsModel.getFullReservationsByExternalUserId(externalUserId, (err, results) => {
         if (err) {
             console.error(err);
-            return res.status(500).json({ error: 'Error fetching full reservation data' });
+            return res.status(500).json({ error: 'Error fetching full reservation data' }); // 500
         }
-        res.json(results);
+        res.status(200).json(results); // 200
     });
 };
+

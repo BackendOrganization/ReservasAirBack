@@ -38,26 +38,34 @@ const createReservation = (externalUserId, externalFlightId, seatIds, amount, ca
             });
         }
 
-        // Guardar array como JSON en seatId (aunque el nombre sea seatId)
+        let completed = 0;
+        let hasError = false;
+        let reservationId = null;
         const status = 'PENDING';
         const seatIdJson = JSON.stringify(seatIds);
         const insertQuery = `INSERT INTO reservations (externalUserId, externalFlightId, seatId, status) VALUES (?, ?, ?, ?)`;
         db.query(insertQuery, [externalUserId, externalFlightId, seatIdJson, status], (err2, result) => {
             if (err2) return callback(err2);
 
-            // Actualizar el estado de cada asiento
-            let completed = 0;
-            let hasError = false;
+            reservationId = result.insertId;
+
             seatIds.forEach((seatId) => {
-                asientosModel.reserveSeat(externalFlightId, seatId, (err3) => {
+                asientosModel.reserveSeat(externalFlightId, seatId, (err3, reserveResult) => {
                     if (hasError) return;
-                    if (err3) {
+                    if (err3 || !reserveResult || reserveResult.success === false) {
                         hasError = true;
-                        return callback(err3);
+                        // Elimina la reserva creada si algún asiento falla
+                        const deleteQuery = `DELETE FROM reservations WHERE reservationId = ?`;
+                        db.query(deleteQuery, [reservationId], () => {
+                            return callback(null, { 
+                                success: false, 
+                                message: `Seat ${seatId} is not available or does not exist. Reservation cancelled.` 
+                            });
+                        });
+                        return;
                     }
                     completed++;
-                    if (completed === seatIds.length) {
-                        const reservationId = result.insertId;
+                    if (completed === seatIds.length && !hasError) {
                         const eventoQuery = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
                         db.query(eventoQuery, [reservationId, externalUserId, amount], (err4) => {
                             if (err4) return callback(err4);
@@ -203,6 +211,15 @@ const getFullReservationsByExternalUserId = (externalUserId, callback) => {
         }
     });
 };
+
+module.exports = {
+    createReservation,
+    cancelReservation,
+    changeSeat,
+    getReservationsByExternalUserId,
+    getFullReservationsByExternalUserId
+};
+
 
 module.exports = {
     createReservation,
