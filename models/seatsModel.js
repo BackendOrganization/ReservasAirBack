@@ -3,33 +3,56 @@ const db = require('../config/db');
 
 // Obtiene los asientos reservados o confirmados junto con externalFlightId y aircraft
 const getReservedOrConfirmedSeats = (externalFlightId, callback) => {
-    const query = `
-        SELECT s.seatId, s.status, f.externalFlightId, f.aircraft
-        FROM seats s
-        JOIN flights f ON s.externalFlightId = f.externalFlightId
-        WHERE s.status IN ('RESERVED', 'CONFIRMED')
-        AND s.externalFlightId = ?
+    // Primero obtenemos la información del vuelo
+    const flightQuery = `
+        SELECT externalFlightId, aircraft
+        FROM flights
+        WHERE externalFlightId = ?
     `;
-        db.query(query, [externalFlightId], (err, results) => {
+    
+    db.query(flightQuery, [externalFlightId], (err, flightResults) => {
+        if (err) return callback(err);
+        
+        if (flightResults.length === 0) {
+            return callback(null, {
+                flightId: null,
+                airCraftType: null,
+                occupiedSeats: [],
+                reservedSeats: [],
+                error: 'Flight not found'
+            });
+        }
+        
+        const flight = flightResults[0];
+        
+        // Luego obtenemos los asientos ocupados/reservados
+        const seatsQuery = `
+            SELECT seatId, status
+            FROM seats
+            WHERE status IN ('RESERVED', 'CONFIRMED')
+            AND externalFlightId = ?
+        `;
+        
+        db.query(seatsQuery, [externalFlightId], (err, seatsResults) => {
             if (err) return callback(err);
+            
             // Agrupar resultados
             const occupiedSeats = [];
             const reservedSeats = [];
-            let airCraftType = null;
-            let flightId = null;
-            results.forEach(row => {
+            
+            seatsResults.forEach(row => {
                 if (row.status === 'CONFIRMED') occupiedSeats.push(row.seatId);
                 if (row.status === 'RESERVED') reservedSeats.push(row.seatId);
-                airCraftType = row.aircraft;
-                flightId = row.externalFlightId;
             });
+            
             callback(null, {
-                flightId,
-                airCraftType,
+                flightId: flight.externalFlightId,
+                airCraftType: flight.aircraft,
                 occupiedSeats,
                 reservedSeats
             });
         });
+    });
 };
 const reserveSeat = (externalFlightId, seatId, callback) => {
     const query = `UPDATE seats SET status = 'RESERVED' WHERE externalFlightId = ? AND seatId = ? AND status = 'AVAILABLE'`;
