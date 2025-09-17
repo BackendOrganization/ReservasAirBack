@@ -4,7 +4,7 @@ info:
   description: API for managing reservations, payments, and flights.
   version: 1.0.1
 servers:
-  - url: http://localhost:3000
+  - url: https://reservasairback.onrender.com
 
 tags:
   - name: Seats
