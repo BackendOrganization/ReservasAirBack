@@ -2,9 +2,9 @@ const express = require("express");
 const app = express();
 const PORT = 3000;
 const dotenv = require('dotenv').config();
+const cors = require('cors'); // <-- agrega esta línea
 
-
-
+app.use(cors()); // <-- agrega esta línea
 app.use(express.json());
 
 app.get("/", (req, res) => {

@@ -3,39 +3,50 @@ const seatsModel = require('./seatsModel');
 
 
 const confirmPayment = (paymentStatus, reservationId, externalUserId, callback) => {
-    // 1. Obtener el evento PENDING
-    const getPendingEventQuery = `SELECT amount FROM paymentEvents WHERE reservationId = ? AND externalUserId = ? AND paymentStatus = 'PENDING' LIMIT 1`;
-    db.query(getPendingEventQuery, [reservationId, externalUserId], (err, rows) => {
-        if (err) return callback(err);
-        if (!rows[0]) return callback(null, { success: false, message: 'No pending payment event found.' });
-        const amount = rows[0].amount;
+    // Verificar si ya existe un evento SUCCESS para esa reserva
+    const checkSuccessQuery = `
+        SELECT eventId FROM paymentEvents WHERE reservationId = ? AND paymentStatus = 'SUCCESS' LIMIT 1
+    `;
+    db.query(checkSuccessQuery, [reservationId], (errCheck, successRows) => {
+        if (errCheck) return callback(errCheck);
+        if (successRows.length > 0) {
+            return callback(null, { success: false, message: 'Payment already confirmed for this reservation.' });
+        }
 
-        // 2. Insertar evento SUCCESS
-        const insertSuccessQuery = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'SUCCESS', ?)`;
-        db.query(insertSuccessQuery, [reservationId, externalUserId, amount], (err2) => {
-            if (err2) return callback(err2);
+        // 1. Obtener el evento PENDING
+        const getPendingEventQuery = `SELECT amount FROM paymentEvents WHERE reservationId = ? AND externalUserId = ? AND paymentStatus = 'PENDING' LIMIT 1`;
+        db.query(getPendingEventQuery, [reservationId, externalUserId], (err, rows) => {
+            if (err) return callback(err);
+            if (!rows[0]) return callback(null, { success: false, message: 'No pending payment event found.' });
+            const amount = rows[0].amount;
 
-            // 3. Actualizar la reserva y los asientos como antes...
-            const updateReservationQuery = `UPDATE reservations SET status = 'PAID' WHERE reservationId = ?`;
-            db.query(updateReservationQuery, [reservationId], (err3) => {
-                if (err3) return callback(err3);
+            // 2. Insertar evento SUCCESS
+            const insertSuccessQuery = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'SUCCESS', ?)`;
+            db.query(insertSuccessQuery, [reservationId, externalUserId, amount], (err2) => {
+                if (err2) return callback(err2);
 
-                const getReservationQuery = `SELECT seatId, externalFlightId FROM reservations WHERE reservationId = ?`;
-                db.query(getReservationQuery, [reservationId], (err4, rows2) => {
-                    if (err4) return callback(err4);
-                    if (!rows2[0]) return callback(null, { success: false, message: 'Reservation not found.' });
-                    const { seatId, externalFlightId } = rows2[0];
-                    let seatIds = [];
-                    try {
-                        seatIds = JSON.parse(seatId);
-                    } catch (e) {
-                        seatIds = [seatId];
-                    }
-                    const placeholders = seatIds.map(() => '?').join(',');
-                    const confirmSeatsQuery = `UPDATE seats SET status = 'CONFIRMED' WHERE seatId IN (${placeholders}) AND externalFlightId = ?`;
-                    db.query(confirmSeatsQuery, [...seatIds, externalFlightId], (err5) => {
-                        if (err5) return callback(err5);
-                        callback(null, { success: true, message: 'Payment confirmed, reservation PAID, seats CONFIRMED, payment event created.' });
+                // 3. Actualizar la reserva y los asientos como antes...
+                const updateReservationQuery = `UPDATE reservations SET status = 'PAID' WHERE reservationId = ?`;
+                db.query(updateReservationQuery, [reservationId], (err3) => {
+                    if (err3) return callback(err3);
+
+                    const getReservationQuery = `SELECT seatId, externalFlightId FROM reservations WHERE reservationId = ?`;
+                    db.query(getReservationQuery, [reservationId], (err4, rows2) => {
+                        if (err4) return callback(err4);
+                        if (!rows2[0]) return callback(null, { success: false, message: 'Reservation not found.' });
+                        const { seatId, externalFlightId } = rows2[0];
+                        let seatIds = [];
+                        try {
+                            seatIds = JSON.parse(seatId);
+                        } catch (e) {
+                            seatIds = [seatId];
+                        }
+                        const placeholders = seatIds.map(() => '?').join(',');
+                        const confirmSeatsQuery = `UPDATE seats SET status = 'CONFIRMED' WHERE seatId IN (${placeholders}) AND externalFlightId = ?`;
+                        db.query(confirmSeatsQuery, [...seatIds, externalFlightId], (err5) => {
+                            if (err5) return callback(err5);
+                            callback(null, { success: true, message: 'Payment confirmed, reservation PAID, seats CONFIRMED, payment event created.' });
+                        });
                     });
                 });
             });
@@ -57,8 +68,8 @@ const cancelPayment = (reservationId, externalUserId, callback) => {
             }
 
             const reservation = reservationRows[0];
-            if (reservation.status !== 'PAID') {
-                return db.rollback(() => { callback(null, { success: false, message: 'Only PAID reservations can be refunded.' }); });
+            if (reservation.status !== 'PENDING') {
+                return db.rollback(() => { callback(null, { success: false, message: 'Only PENDING reservations can be refunded.' }); });
             }
 
             // Verificar si ya existe un REFUND

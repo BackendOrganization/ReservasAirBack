@@ -43,8 +43,9 @@ const createReservation = (externalUserId, externalFlightId, seatIds, amount, ca
         let reservationId = null;
         const status = 'PENDING';
         const seatIdJson = JSON.stringify(seatIds);
-        const insertQuery = `INSERT INTO reservations (externalUserId, externalFlightId, seatId, status) VALUES (?, ?, ?, ?)`;
-        db.query(insertQuery, [externalUserId, externalFlightId, seatIdJson, status], (err2, result) => {
+        // Agrega totalPrice al insert
+        const insertQuery = `INSERT INTO reservations (externalUserId, externalFlightId, seatId, status, totalPrice) VALUES (?, ?, ?, ?, ?)`;
+        db.query(insertQuery, [externalUserId, externalFlightId, seatIdJson, status, amount], (err2, result) => {
             if (err2) return callback(err2);
 
             reservationId = result.insertId;
@@ -93,11 +94,20 @@ const cancelReservation = (reservationId, amount, callback) => {
             return callback(null, { success: false, message: 'Amount is required and must be a number.' });
         }
 
-        // Solo actualizar la reserva, sin tocar paymentEvents
+        // Actualizar la reserva y crear el evento PENDING
         const cancelQuery = `UPDATE reservations SET status = 'PENDING', totalPrice = ? WHERE reservationId = ?`;
         db.query(cancelQuery, [amount, reservationId], (err2) => {
             if (err2) return callback(err2);
-            callback(null, { success: true, message: 'Reservation status changed to PENDING.' });
+
+            // Crear evento PENDING en paymentEvents
+            const pendingEventQuery = `
+                INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount)
+                VALUES (?, ?, 'PENDING', ?)
+            `;
+            db.query(pendingEventQuery, [reservationId, reservation.externalUserId, amount], (err3) => {
+                if (err3) return callback(err3);
+                callback(null, { success: true, message: 'Reservation status changed to PENDING and payment event created.' });
+            });
         });
     });
 };

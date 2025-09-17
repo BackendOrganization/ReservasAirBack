@@ -15,6 +15,9 @@ exports.confirmPayment = (req, res) => {
             console.error(err);
             return res.status(500).json({ error: 'Error confirming payment' }); // 500
         }
+        if (result && result.success === false) {
+            return res.status(400).json({ error: result.message }); // 400
+        }
         res.status(200).json(result); // 200
     });
 };
