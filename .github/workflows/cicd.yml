@@ -23,8 +23,8 @@ jobs:
         run: npm install
 
       # Descomenta si quieres ejecutar tests
-        name: Run tests
-        run: npm test --if-present
+        -name: Run tests
+        -run: npm test --if-present
 
   deploy:
     name: Deploy to Railway
