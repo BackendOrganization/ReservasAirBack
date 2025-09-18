@@ -1,6 +1,6 @@
 const express = require("express");
 const app = express();
-const PORT = process.env.PORT || 3000; // <-- usa el puerto asignado por Render
+const PORT = process.env.PORT || 8080; // <-- usa el puerto asignado por Render
 const dotenv = require('dotenv').config();
 const cors = require('cors');
 
