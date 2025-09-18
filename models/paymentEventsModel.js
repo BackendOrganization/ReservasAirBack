@@ -38,6 +38,7 @@ const confirmPayment = (paymentStatus, reservationId, externalUserId, callback) 
                         let seatIds = [];
                         try {
                             seatIds = JSON.parse(seatId);
+                            if (!Array.isArray(seatIds)) seatIds = [seatIds];
                         } catch (e) {
                             seatIds = [seatId];
                         }
