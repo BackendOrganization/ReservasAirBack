@@ -36,5 +36,8 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Railway Login
+        run: railway login --token $RAILWAY_TOKEN
+
       - name: Deploy to Railway
         run: railway up --service=${{ env.SVC_ID }}
