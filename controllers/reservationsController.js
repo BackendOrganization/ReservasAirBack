@@ -50,16 +50,19 @@ exports.createReservation = (req, res) => {
 
 exports.cancelReservation = (req, res) => {
     const reservationId = req.params.reservationId;
-    const amount = req.body.amount;
-    if (!reservationId || amount == null) {
-        return res.status(400).json({ error: 'Missing required fields: reservationId (URL), amount' }); // 400
+    if (!reservationId) {
+        return res.status(400).json({ error: 'Missing required field: reservationId (URL)' }); // 400
     }
-    reservationsModel.cancelReservation(reservationId, amount, (err, result) => {
+    reservationsModel.cancelReservation(reservationId, (err, result) => {
+        if (result) {
+            // Si hay resultado, mostrarlo aunque haya error interno
+            return res.status(200).json(result);
+        }
         if (err) {
             console.error(err);
-            return res.status(500).json({ error: 'Error cancelling reservation' }); // 500
+            return res.status(500).json({ error: 'Error cancelling reservation', details: err });
         }
-        res.status(200).json(result); // 200
+        res.status(500).json({ error: 'Unknown error cancelling reservation' });
     });
 };
 

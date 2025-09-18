@@ -136,22 +136,6 @@ paths:
           schema:
             type: integer
             format: int64
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                amount:
-                  type: number
-              required:
-                - amount
-            examples:
-              CancelReservation:
-                summary: Cancel reservation and initiate refund
-                value:
-                  amount: 100.00
       responses:
         '200':
           description: Reservation cancelled successfully
