@@ -46,8 +46,8 @@ const getReservedOrConfirmedSeats = (externalFlightId, callback) => {
             
             // Siempre devolver la información del vuelo
             callback(null, {
-                flightId: flight.externalFlightId,    // ✅ AHORA SÍ EXISTE flight
-                airCraftType: flight.aircraft,        // ✅ AHORA SÍ EXISTE flight
+                flightId: flight.externalFlightId,
+                airCraftType: flight.aircraft,
                 occupiedSeats,
                 reservedSeats
             });
@@ -60,18 +60,18 @@ const reserveSeat = (externalFlightId, seatId, callback) => {
     db.query(query, [externalFlightId, seatId], (err, result) => {
         if (err) return callback(err);
         if (result.affectedRows === 0) {
-            return callback(null, { success: false, message: 'Seat not available or does not exist.' });
+            return callback(null, { success: false, message: 'Seat is not available or does not exist.' });
         }
         callback(null, { success: true, message: 'Seat reserved successfully.' });
     });
 };
 
 const cancelSeat = (externalFlightId, seatId, callback) => {
-    const query = `UPDATE seats SET status = 'AVAILABLE' WHERE externalFlightId = ? AND seatId = ? AND status IN ('RESERVED', 'CONFIRMED')`;
+    const query = `UPDATE seats SET status = 'AVAILABLE' WHERE externalFlightId = ? AND seatId = ? AND status = 'CONFIRMED'`;
     db.query(query, [externalFlightId, seatId], (err, result) => {
         if (err) return callback(err);
         if (result.affectedRows === 0) {
-            return callback(null, { success: false, message: 'Seat not found or not reserved/confirmed.' });
+            return callback(null, { success: false, message: 'Seat was not confirmed or does not exist.' });
         }
         callback(null, { success: true, message: 'Seat cancelled successfully.' });
     });
