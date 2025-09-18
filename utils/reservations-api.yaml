@@ -4,7 +4,7 @@ info:
   description: API for managing reservations, payments, and flights.
   version: 1.0.1
 servers:
-  - url: https://reservasairback.onrender.com
+  - url: https://reservasairback-production.up.railway.app/
 
 tags:
   - name: Seats
