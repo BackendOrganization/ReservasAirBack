@@ -21,6 +21,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      # Descomenta si quieres ejecutar tests
       # - name: Run tests
       #   run: npm test --if-present
 
@@ -32,13 +33,18 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Install Railway CLI
         run: npm install -g @railway/cli
+
+      - name: Login to Railway
+        run: railway login --ci $RAILWAY_TOKEN
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Link Railway Project
         run: railway link --project e912d1f3-8797-4ee9-a842-2b6e6aaca6a4
