@@ -118,7 +118,9 @@ const createReservation = (externalUserId, externalFlightId, seatIds, callback) 
     }
 
     const placeholders = seatIds.map(() => '?').join(',');
-    // Filtra por externalFlightId y seatId
+    const seatsCount = seatIds.length; // ✅ Cantidad de asientos a reservar
+    
+    // Verificar que no estén ocupados
     const checkQuery = `
         SELECT seatId, status FROM seats 
         WHERE seatId IN (${placeholders}) AND externalFlightId = ? AND (status = 'RESERVED' OR status = 'CONFIRMED')
@@ -133,7 +135,7 @@ const createReservation = (externalUserId, externalFlightId, seatIds, callback) 
             });
         }
 
-        // Verifica que todos los seatIds existan y estén disponibles para ese vuelo
+        // Verificar que todos estén disponibles
         const availableQuery = `
             SELECT seatId, price FROM seats 
             WHERE seatId IN (${placeholders}) AND externalFlightId = ? AND status = 'AVAILABLE'
@@ -145,11 +147,11 @@ const createReservation = (externalUserId, externalFlightId, seatIds, callback) 
                 const notAvailable = seatIds.filter(id => !availableSeatIds.includes(id));
                 return callback(null, { 
                     success: false, 
-                    message: `Seat(s) ${notAvailable.join(', ')} are not available or do not exist. Reservation cancelled.` 
+                    message: `Seat(s) ${notAvailable.join(', ')} are not available or do not exist.` 
                 });
             }
 
-            // Calcular el totalPrice sumando los precios de los asientos disponibles
+            // Calcular precio total
             const totalPrice = availableRows.reduce((sum, seat) => sum + Number(seat.price), 0);
 
             let completed = 0;
@@ -157,12 +159,15 @@ const createReservation = (externalUserId, externalFlightId, seatIds, callback) 
             let reservationId = null;
             const status = 'PENDING';
             const seatIdJson = JSON.stringify(seatIds);
+            
+            // Crear la reserva
             const insertQuery = `INSERT INTO reservations (externalUserId, externalFlightId, seatId, status, totalPrice) VALUES (?, ?, ?, ?, ?)`;
             db.query(insertQuery, [externalUserId, externalFlightId, seatIdJson, status, totalPrice], (err3, result) => {
                 if (err3) return callback(err3);
 
                 reservationId = result.insertId;
 
+                // Reservar cada asiento
                 seatIds.forEach((seatId) => {
                     const reserveQuery = `UPDATE seats SET status = 'RESERVED' WHERE seatId = ? AND externalFlightId = ? AND status = 'AVAILABLE'`;
                     db.query(reserveQuery, [seatId, externalFlightId], (err4, reserveResult) => {
@@ -173,17 +178,37 @@ const createReservation = (externalUserId, externalFlightId, seatIds, callback) 
                             db.query(deleteQuery, [reservationId], () => {
                                 return callback(null, { 
                                     success: false, 
-                                    message: `Seat ${seatId} is not available or does not exist. Reservation cancelled.` 
+                                    message: `Seat ${seatId} could not be reserved.` 
                                 });
                             });
                             return;
                         }
                         completed++;
                         if (completed === seatIds.length && !hasError) {
-                            const eventoQuery = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
-                            db.query(eventoQuery, [reservationId, externalUserId, totalPrice], (err5) => {
-                                if (err5) return callback(err5);
-                                callback(null, { success: true, message: 'All seats reserved in one reservation.', reservationId, totalPrice });
+                            // ✅ ACTUALIZAR CONTADORES EN FLIGHTS - RESTAR freeSeats Y SUMAR occupiedSeats
+                            const updateFlightQuery = `
+                                UPDATE flights 
+                                SET freeSeats = freeSeats - ?, occupiedSeats = occupiedSeats + ?
+                                WHERE externalFlightId = ?
+                            `;
+                            db.query(updateFlightQuery, [seatsCount, seatsCount, externalFlightId], (err5) => {
+                                if (err5) {
+                                    console.error('Error updating flight counters:', err5);
+                                    // Continuar aunque falle el contador
+                                }
+                                
+                                // Crear evento de pago
+                                const eventoQuery = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
+                                db.query(eventoQuery, [reservationId, externalUserId, totalPrice], (err6) => {
+                                    if (err6) return callback(err6);
+                                    callback(null, { 
+                                        success: true, 
+                                        message: 'All seats reserved successfully.', 
+                                        reservationId, 
+                                        totalPrice,
+                                        seatsReserved: seatsCount
+                                    });
+                                });
                             });
                         }
                     });
@@ -205,26 +230,33 @@ const cancelReservation = (reservationId, callback) => {
             return callback(null, { success: false, message: 'Only PAID reservations can be cancelled.' });
         }
 
+        // Contar asientos de la reserva
         let seatIds = [];
         try {
             seatIds = Array.isArray(reservation.seatId) ? reservation.seatId : JSON.parse(reservation.seatId);
         } catch {
             seatIds = [reservation.seatId];
         }
-        const seatsCount = seatIds.length;
+        const seatsCount = seatIds.length; // ✅ Cantidad de asientos a liberar
 
+        // Actualizar estado de la reserva
         const cancelQuery = `UPDATE reservations SET status = 'PENDING' WHERE reservationId = ?`;
         db.query(cancelQuery, [reservationId], (err2) => {
             if (err2) return callback(err2);
 
+            // ✅ ACTUALIZAR CONTADORES EN FLIGHTS - SUMAR freeSeats Y RESTAR occupiedSeats
             const updateFlightQuery = `
                 UPDATE flights 
                 SET freeSeats = freeSeats + ?, occupiedSeats = occupiedSeats - ?
                 WHERE externalFlightId = ?
             `;
             db.query(updateFlightQuery, [seatsCount, seatsCount, reservation.externalFlightId], (err3) => {
-                if (err3) return callback(err3);
+                if (err3) {
+                    console.error('Error updating flight counters on cancellation:', err3);
+                    // Continuar aunque falle el contador
+                }
 
+                // Liberar asientos
                 if (seatIds.length > 0) {
                     const placeholders = seatIds.map(() => '?').join(',');
                     const releaseSeatsQuery = `
@@ -232,9 +264,11 @@ const cancelReservation = (reservationId, callback) => {
                         WHERE seatId IN (${placeholders}) AND externalFlightId = ? AND status = 'CONFIRMED'
                     `;
                     db.query(releaseSeatsQuery, [...seatIds, reservation.externalFlightId], (err4) => {
-                        if (err4) return callback(err4);
+                        if (err4) {
+                            console.error('Error releasing seats:', err4);
+                        }
 
-                        // Agrega amount al evento PENDING
+                        // Crear evento PENDING
                         const pendingEventQuery = `
                             INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount)
                             VALUES (?, ?, 'PENDING', ?)
@@ -243,19 +277,24 @@ const cancelReservation = (reservationId, callback) => {
                             if (err5) return callback(err5);
                             callback(null, { 
                                 success: true, 
-                                message: 'Reservation cancelled, seats released, and payment event created.'
+                                message: 'Reservation cancelled, seats released, and counters updated.',
+                                seatsCancelled: seatsCount
                             });
                         });
                     });
                 } else {
-                    // Agrega amount al evento PENDING
+                    // Crear evento PENDING si no hay asientos
                     const pendingEventQuery = `
                         INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount)
                         VALUES (?, ?, 'PENDING', ?)
                     `;
                     db.query(pendingEventQuery, [reservationId, reservation.externalUserId, reservation.totalPrice], (err4) => {
                         if (err4) return callback(err4);
-                        callback(null, { success: true, message: 'Reservation cancelled and payment event created.' });
+                        callback(null, { 
+                            success: true, 
+                            message: 'Reservation cancelled and counters updated.',
+                            seatsCancelled: seatsCount
+                        });
                     });
                 }
             });
