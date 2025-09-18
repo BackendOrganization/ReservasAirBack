@@ -25,9 +25,9 @@ jobs:
       #   run: npm test --if-present
 
   deploy:
+    name: Deploy to Railway
     runs-on: ubuntu-latest
-    needs: ci   # 👈 espera a que termine 'ci'
-
+    needs: ci
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -41,11 +41,11 @@ jobs:
         run: npm install -g @railway/cli
 
       - name: Link Railway Project
-        run: railway link 45d7692c-f270-4954-83b7-1f24cbde9e61
+        run: railway link --project e912d1f3-8797-4ee9-a842-2b6e6aaca6a4
         env:
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Deploy to Railway
-        run: railway up --ci --service e912d1f3-8797-4ee9-a842-2b6e6aaca6a4
+        run: railway up --ci
         env:
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
