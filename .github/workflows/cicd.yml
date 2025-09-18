@@ -5,7 +5,6 @@ on:
     branches:
       - main
 
-
 jobs:
   ci:
     name: Run Tests
@@ -18,13 +17,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
-      # Descomenta si quieres ejecutar tests
+      - name: Install Jest globally
+        run: npm install -g jest
+
       - name: Run tests
-        run: npm test --if-present
+        run: npm test
 
   deploy:
     name: Deploy to Railway
@@ -38,6 +40,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Install Railway CLI
         run: npm install -g @railway/cli
