@@ -109,7 +109,7 @@ const getReservationsByExternalUserId = (externalUserId, callback) => {
 
 
 
-const createReservation = (externalUserId, externalFlightId, seatIds, amount, callback) => {
+const createReservation = (externalUserId, externalFlightId, seatIds, callback) => {
     if (!externalFlightId) {
         return callback({ success: false, message: 'externalFlightId is required.' });
     }
@@ -135,7 +135,7 @@ const createReservation = (externalUserId, externalFlightId, seatIds, amount, ca
 
         // Verifica que todos los seatIds existan y estén disponibles para ese vuelo
         const availableQuery = `
-            SELECT seatId FROM seats 
+            SELECT seatId, price FROM seats 
             WHERE seatId IN (${placeholders}) AND externalFlightId = ? AND status = 'AVAILABLE'
         `;
         db.query(availableQuery, [...seatIds, externalFlightId], (err2, availableRows) => {
@@ -149,13 +149,16 @@ const createReservation = (externalUserId, externalFlightId, seatIds, amount, ca
                 });
             }
 
+            // Calcular el totalPrice sumando los precios de los asientos disponibles
+            const totalPrice = availableRows.reduce((sum, seat) => sum + Number(seat.price), 0);
+
             let completed = 0;
             let hasError = false;
             let reservationId = null;
             const status = 'PENDING';
             const seatIdJson = JSON.stringify(seatIds);
             const insertQuery = `INSERT INTO reservations (externalUserId, externalFlightId, seatId, status, totalPrice) VALUES (?, ?, ?, ?, ?)`;
-            db.query(insertQuery, [externalUserId, externalFlightId, seatIdJson, status, amount], (err3, result) => {
+            db.query(insertQuery, [externalUserId, externalFlightId, seatIdJson, status, totalPrice], (err3, result) => {
                 if (err3) return callback(err3);
 
                 reservationId = result.insertId;
@@ -178,9 +181,9 @@ const createReservation = (externalUserId, externalFlightId, seatIds, amount, ca
                         completed++;
                         if (completed === seatIds.length && !hasError) {
                             const eventoQuery = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
-                            db.query(eventoQuery, [reservationId, externalUserId, amount], (err5) => {
+                            db.query(eventoQuery, [reservationId, externalUserId, totalPrice], (err5) => {
                                 if (err5) return callback(err5);
-                                callback(null, { success: true, message: 'All seats reserved in one reservation.', reservationId });
+                                callback(null, { success: true, message: 'All seats reserved in one reservation.', reservationId, totalPrice });
                             });
                         }
                     });

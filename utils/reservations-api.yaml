@@ -93,17 +93,13 @@ paths:
                   items:
                     type: integer
                     format: int64
-                amount:
-                  type: number
               required:
                 - seatIds
-                - amount
             examples:
               CreateReservation:
                 summary: Example request body
                 value:
                   seatIds: [18, 19, 20]
-                  amount: 1200
       responses:
         '201':
           description: Reservation created successfully
