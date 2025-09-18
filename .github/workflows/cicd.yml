@@ -38,20 +38,16 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
+      - name: Install Railway CLI v3.14.0
+        run: npm install -g @railway/cli@3.14.0
 
-      - name: Login to Railway
-        run: railway login --ci $RAILWAY_TOKEN
+      - name: Set Railway token
+        run: echo $RAILWAY_TOKEN > ~/.railway/token
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Link Railway Project
         run: railway link --project e912d1f3-8797-4ee9-a842-2b6e6aaca6a4
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Deploy to Railway
-        run: railway up --ci
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up
