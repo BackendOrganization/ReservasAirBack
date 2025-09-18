@@ -58,15 +58,14 @@ const getReservationsByExternalUserId = (externalUserId, callback) => {
                     const seatSql = `
                         SELECT seatId, seatNumber, category AS cabinName, price
                         FROM seats
-                        WHERE seatId IN (${seatIds.map(() => '?').join(',')})
+                        WHERE seatId IN (${seatIds.map(() => '?').join(',')}) AND externalFlightId = ?
                     `;
-                    const seatResult = await db.promise().query(seatSql, seatIds);
+                    const seatResult = await db.promise().query(seatSql, [...seatIds, reservation.externalFlightId]);
                     seats = seatResult[0];
                 }
 
                 let origin = {};
                 let destination = {};
-                // Corrige el parseo para devolver el objeto si es string JSON, o el valor original si ya es objeto
                 try {
                     origin = typeof reservation.origin === 'string' && reservation.origin.trim().startsWith('{')
                         ? JSON.parse(reservation.origin)
@@ -119,11 +118,12 @@ const createReservation = (externalUserId, externalFlightId, seatIds, amount, ca
     }
 
     const placeholders = seatIds.map(() => '?').join(',');
+    // Filtra por externalFlightId y seatId
     const checkQuery = `
         SELECT seatId, status FROM seats 
-        WHERE seatId IN (${placeholders}) AND (status = 'RESERVED' OR status = 'CONFIRMED')
+        WHERE seatId IN (${placeholders}) AND externalFlightId = ? AND (status = 'RESERVED' OR status = 'CONFIRMED')
     `;
-    db.query(checkQuery, seatIds, (err, rows) => {
+    db.query(checkQuery, [...seatIds, externalFlightId], (err, rows) => {
         if (err) return callback(err);
         if (rows.length > 0) {
             return callback(null, { 
@@ -133,41 +133,57 @@ const createReservation = (externalUserId, externalFlightId, seatIds, amount, ca
             });
         }
 
-        let completed = 0;
-        let hasError = false;
-        let reservationId = null;
-        const status = 'PENDING';
-        const seatIdJson = JSON.stringify(seatIds);
-        // Agrega totalPrice al insert
-        const insertQuery = `INSERT INTO reservations (externalUserId, externalFlightId, seatId, status, totalPrice) VALUES (?, ?, ?, ?, ?)`;
-        db.query(insertQuery, [externalUserId, externalFlightId, seatIdJson, status, amount], (err2, result) => {
+        // Verifica que todos los seatIds existan y estén disponibles para ese vuelo
+        const availableQuery = `
+            SELECT seatId FROM seats 
+            WHERE seatId IN (${placeholders}) AND externalFlightId = ? AND status = 'AVAILABLE'
+        `;
+        db.query(availableQuery, [...seatIds, externalFlightId], (err2, availableRows) => {
             if (err2) return callback(err2);
+            const availableSeatIds = availableRows.map(r => r.seatId);
+            if (availableSeatIds.length !== seatIds.length) {
+                const notAvailable = seatIds.filter(id => !availableSeatIds.includes(id));
+                return callback(null, { 
+                    success: false, 
+                    message: `Seat(s) ${notAvailable.join(', ')} are not available or do not exist. Reservation cancelled.` 
+                });
+            }
 
-            reservationId = result.insertId;
+            let completed = 0;
+            let hasError = false;
+            let reservationId = null;
+            const status = 'PENDING';
+            const seatIdJson = JSON.stringify(seatIds);
+            const insertQuery = `INSERT INTO reservations (externalUserId, externalFlightId, seatId, status, totalPrice) VALUES (?, ?, ?, ?, ?)`;
+            db.query(insertQuery, [externalUserId, externalFlightId, seatIdJson, status, amount], (err3, result) => {
+                if (err3) return callback(err3);
 
-            seatIds.forEach((seatId) => {
-                asientosModel.reserveSeat(externalFlightId, seatId, (err3, reserveResult) => {
-                    if (hasError) return;
-                    if (err3 || !reserveResult || reserveResult.success === false) {
-                        hasError = true;
-                        // Elimina la reserva creada si algún asiento falla
-                        const deleteQuery = `DELETE FROM reservations WHERE reservationId = ?`;
-                        db.query(deleteQuery, [reservationId], () => {
-                            return callback(null, { 
-                                success: false, 
-                                message: `Seat ${seatId} is not available or does not exist. Reservation cancelled.` 
+                reservationId = result.insertId;
+
+                seatIds.forEach((seatId) => {
+                    const reserveQuery = `UPDATE seats SET status = 'RESERVED' WHERE seatId = ? AND externalFlightId = ? AND status = 'AVAILABLE'`;
+                    db.query(reserveQuery, [seatId, externalFlightId], (err4, reserveResult) => {
+                        if (hasError) return;
+                        if (err4 || reserveResult.affectedRows === 0) {
+                            hasError = true;
+                            const deleteQuery = `DELETE FROM reservations WHERE reservationId = ?`;
+                            db.query(deleteQuery, [reservationId], () => {
+                                return callback(null, { 
+                                    success: false, 
+                                    message: `Seat ${seatId} is not available or does not exist. Reservation cancelled.` 
+                                });
                             });
-                        });
-                        return;
-                    }
-                    completed++;
-                    if (completed === seatIds.length && !hasError) {
-                        const eventoQuery = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
-                        db.query(eventoQuery, [reservationId, externalUserId, amount], (err4) => {
-                            if (err4) return callback(err4);
-                            callback(null, { success: true, message: 'All seats reserved in one reservation.', reservationId });
-                        });
-                    }
+                            return;
+                        }
+                        completed++;
+                        if (completed === seatIds.length && !hasError) {
+                            const eventoQuery = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
+                            db.query(eventoQuery, [reservationId, externalUserId, amount], (err5) => {
+                                if (err5) return callback(err5);
+                                callback(null, { success: true, message: 'All seats reserved in one reservation.', reservationId });
+                            });
+                        }
+                    });
                 });
             });
         });
@@ -201,7 +217,27 @@ const cancelReservation = (reservationId, amount, callback) => {
             `;
             db.query(pendingEventQuery, [reservationId, reservation.externalUserId, amount], (err3) => {
                 if (err3) return callback(err3);
-                callback(null, { success: true, message: 'Reservation status changed to PENDING and payment event created.' });
+
+                // Liberar los asientos usando seatId y externalFlightId
+                let seatIds = [];
+                try {
+                    seatIds = JSON.parse(reservation.seatId);
+                } catch {
+                    seatIds = [reservation.seatId];
+                }
+                if (seatIds.length > 0) {
+                    const placeholders = seatIds.map(() => '?').join(',');
+                    const releaseSeatsQuery = `
+                        UPDATE seats SET status = 'AVAILABLE'
+                        WHERE seatId IN (${placeholders}) AND externalFlightId = ? AND status = 'CONFIRMED'
+                    `;
+                    db.query(releaseSeatsQuery, [...seatIds, reservation.externalFlightId], (err4) => {
+                        if (err4) return callback(err4);
+                        callback(null, { success: true, message: 'Reservation status changed to PENDING, payment event created, seats released.' });
+                    });
+                } else {
+                    callback(null, { success: true, message: 'Reservation status changed to PENDING and payment event created.' });
+                }
             });
         });
     });
@@ -280,9 +316,9 @@ const getFullReservationsByExternalUserId = (externalUserId, callback) => {
                     const seatSql = `
                         SELECT seatId, seatNumber, category AS cabinName, price
                         FROM seats
-                        WHERE seatId IN (${seatIds.map(() => '?').join(',')})
+                        WHERE seatId IN (${seatIds.map(() => '?').join(',')}) AND externalFlightId = ?
                     `;
-                    const seatResult = await db.promise().query(seatSql, seatIds);
+                    const seatResult = await db.promise().query(seatSql, [...seatIds, reservation.externalFlightId]);
                     seats = seatResult[0];
                 }
 
@@ -337,12 +373,6 @@ module.exports = {
     getReservationsByExternalUserId,
     getFullReservationsByExternalUserId
 };
+// El método ya valida correctamente la disponibilidad de los asientos.
+// Si el asiento no existe o no está AVAILABLE para ese vuelo, la reserva será rechazada.
 
-
-module.exports = {
-    createReservation,
-    cancelReservation,
-    changeSeat,
-    getReservationsByExternalUserId,
-    getFullReservationsByExternalUserId
-};
