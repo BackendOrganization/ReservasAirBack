@@ -1,84 +1,78 @@
-
 const flightsController = require('../controllers/flightsController');
 const flightsModel = require('../models/flightsModel');
 
 jest.mock('../models/flightsModel');
 
 describe('flightsController', () => {
-    let mockRequest;
-    let mockResponse;
+  let mockRequest, mockResponse;
 
-    beforeEach(() => {
-        mockRequest = {
-            body: {}
-        };
-        mockResponse = {
-            status: jest.fn(() => mockResponse),
-            json: jest.fn(),
-        };
+  beforeEach(() => {
+    mockRequest = { body: {} };
+    mockResponse = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+    jest.clearAllMocks();
+  });
+
+  describe('ingestFlight', () => {
+    test('deberia reservar un vuelo exitosamente y retornar 201', () => {
+      const mockFlightData = {
+        id: 'AR123',
+        origin: 'BUE',
+        destination: 'MIA',
+        aircraft: 'A320'
+      };
+
+      mockRequest.body = mockFlightData;
+
+      flightsModel.insertFlight.mockImplementationOnce((data, cb) => {
+        cb(null, { flightId: 'AR123' });
+      });
+
+      flightsController.ingestFlight(mockRequest, mockResponse);
+
+      expect(flightsModel.insertFlight).toHaveBeenCalledWith(mockFlightData, expect.any(Function));
+      expect(mockResponse.status).toHaveBeenCalledWith(201);
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        message: 'Flight and seats created successfully',
+        flightId: 'AR123'
+      });
     });
 
-    afterEach(() => {
-        jest.clearAllMocks();
+    test('deberia retornar 400 de status code ya que hay los datos estan incompletos', () => {
+     
+      flightsController.ingestFlight(mockRequest, mockResponse);
+
+      expect(flightsModel.insertFlight).not.toHaveBeenCalled();
+      expect(mockResponse.status).toHaveBeenCalledWith(400);
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        error: 'Missing required flight data (id, origin, destination, aircraft)'
+      });
     });
 
-    describe('ingestFlight', () => {
-        test('deberia reservar un vuelo exitosamente y retornar 201', () => {
-            const mockFlightData = {
-                id: 'AR123',
-                origin: { city: 'NYC' },
-                destination: { city: 'LAX' },
-                aircraft: 'B747',
-                aircraftModel: 'Boeing 747',
-                date: '2025-10-27',
-                duration: '6h',
-                freeSeats: 300
-            };
-            mockRequest.body = mockFlightData;
-            flightsModel.insertFlight.mockImplementationOnce((data, callback) => {
-                callback(null, { insertId: 1 });
-            });
+    test('Deberia retornar error 500 por error en el modelo', () => {
+      const mockFlightData = {
+        id: 'AR123',
+        origin: 'BUE',
+        destination: 'MIA',
+        aircraft: 'A320'
+      };
 
-            flightsController.ingestFlight(mockRequest, mockResponse);
+      mockRequest.body = mockFlightData;
 
-            expect(flightsModel.insertFlight).toHaveBeenCalledWith(mockFlightData, expect.any(Function));
-            expect(mockResponse.status).toHaveBeenCalledWith(201);
-            expect(mockResponse.json).toHaveBeenCalledWith({
-                message: 'Flight inserted successfully',
-                flightId: 'AR123'
-            });
-        });
+      flightsModel.insertFlight.mockImplementationOnce((data, cb) => {
+        cb(new Error('DB error'));
+      });
 
-        test('deberia retornar 400 de status code ya que hay los datos estan incompletos', () => {
-            mockRequest.body = { id: 'AR123' }; // se envia body incompleto
-            flightsController.ingestFlight(mockRequest, mockResponse);
-            
-            expect(flightsModel.insertFlight).not.toHaveBeenCalled();
-            expect(mockResponse.status).toHaveBeenCalledWith(400);
-            expect(mockResponse.json).toHaveBeenCalledWith({
-                error: 'Missing required flight data'
-            });
-        });
+      flightsController.ingestFlight(mockRequest, mockResponse);
 
-        test('Deberia retornar error 500 por error en el modelo', () => {
-            const mockFlightData = {
-                id: 'AR123',
-                origin: {},
-                destination: {}
-            };
-            mockRequest.body = mockFlightData;
-            flightsModel.insertFlight.mockImplementationOnce((data, callback) => {
-                callback('Database Error');
-            });
-
-            flightsController.ingestFlight(mockRequest, mockResponse);
-
-            expect(flightsModel.insertFlight).toHaveBeenCalled();
-            expect(mockResponse.status).toHaveBeenCalledWith(500);
-            expect(mockResponse.json).toHaveBeenCalledWith({
-                error: 'Error inserting flight',
-                details: 'Database Error'
-            });
-        });
+      expect(flightsModel.insertFlight).toHaveBeenCalled();
+      expect(mockResponse.status).toHaveBeenCalledWith(500);
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        error: 'Error inserting flight',
+         details: expect.objectContaining({ message: 'DB error' })
+      });
     });
+  });
 });
