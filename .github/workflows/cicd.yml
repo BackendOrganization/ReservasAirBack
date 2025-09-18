@@ -24,20 +24,22 @@ jobs:
       # - name: Run tests
       #   run: npm test --if-present
 
-  deploy:
-    name: Deploy to Railway
+deploy:
     runs-on: ubuntu-latest
-    needs: ci
-    container: ghcr.io/railwayapp/cli:latest
-    env:
-      SVC_ID: e912d1f3-8797-4ee9-a842-2b6e6aaca6a4
-      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      - name: Railway Login
-        run: railway login --token $RAILWAY_TOKEN --ci
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
 
       - name: Deploy to Railway
-        run: railway up --service=${{ env.SVC_ID }}
+        run: railway up --ci
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
