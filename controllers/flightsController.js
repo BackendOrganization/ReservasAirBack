@@ -1,16 +1,20 @@
-
 const flightsModel = require('../models/flightsModel');
 
 exports.ingestFlight = (req, res) => {
     const flightData = req.body;
-    if (!flightData || !flightData.id || !flightData.origin || !flightData.destination) {
-        return res.status(400).json({ error: 'Missing required flight data' });
+    if (!flightData || !flightData.id || !flightData.origin || !flightData.destination || !flightData.aircraft) {
+        return res.status(400).json({ error: 'Missing required flight data (id, origin, destination, aircraft)' });
     }
+    
     flightsModel.insertFlight(flightData, (err, result) => {
         if (err) {
             return res.status(500).json({ error: 'Error inserting flight', details: err });
         }
-        res.status(201).json({ message: 'Flight inserted successfully', flightId: flightData.id });
+        res.status(201).json({ 
+            message: 'Flight and seats created successfully', 
+            flightId: flightData.id,
+            seatsCreated: result.seatsCreated
+        });
     });
 };
 
