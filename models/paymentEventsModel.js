@@ -142,11 +142,23 @@ const createPaymentEventAndFailReservation = (paymentData, callback) => {
             return callback({ message: 'A FAILED payment event already exists for this reservationId.' });
         }
 
-        // Obtener el totalPrice de la reserva para el campo amount
-        const getAmountSql = `SELECT totalPrice FROM reservations WHERE reservationId = ?`;
-        db.query(getAmountSql, [paymentData.reservationId], (err2, rows) => {
+        // Obtener el totalPrice y los asientos de la reserva
+        const getReservationSql = `SELECT totalPrice, seatId, externalFlightId FROM reservations WHERE reservationId = ?`;
+        db.query(getReservationSql, [paymentData.reservationId], (err2, rows) => {
             if (err2) return callback(err2);
             const amount = rows[0] ? rows[0].totalPrice : 0;
+            const seatIdRaw = rows[0] ? rows[0].seatId : null;
+            const externalFlightId = rows[0] ? rows[0].externalFlightId : null;
+
+            // Parsear seatIds
+            let seatIds = [];
+            try {
+                seatIds = JSON.parse(seatIdRaw);
+                if (!Array.isArray(seatIds)) seatIds = [seatIds];
+            } catch (e) {
+                seatIds = [seatIdRaw];
+            }
+            const seatsCount = seatIds.length;
 
             // Crear el evento de pago con amount
             const insertEventSql = `
@@ -166,7 +178,31 @@ const createPaymentEventAndFailReservation = (paymentData, callback) => {
                     `;
                     db.query(updateReservationSql, [paymentData.reservationId], (err, resResult) => {
                         if (err) return callback(err);
-                        callback(null, { paymentEventId: eventResult.insertId, reservationId: paymentData.reservationId });
+
+                        // Actualizar asientos a AVAILABLE
+                        if (seatIds.length > 0 && externalFlightId) {
+                            const placeholders = seatIds.map(() => '?').join(',');
+                            const updateSeatsSql = `
+                                UPDATE seats SET status = 'AVAILABLE'
+                                WHERE seatId IN (${placeholders}) AND externalFlightId = ? AND status = 'CONFIRMED'
+                            `;
+                            db.query(updateSeatsSql, [...seatIds, externalFlightId], (err2) => {
+                                if (err2) return callback(err2);
+
+                                // Actualizar contadores en flights
+                                const updateFlightSql = `
+                                    UPDATE flights
+                                    SET freeSeats = freeSeats + ?, occupiedSeats = occupiedSeats - ?
+                                    WHERE externalFlightId = ?
+                                `;
+                                db.query(updateFlightSql, [seatsCount, seatsCount, externalFlightId], (err3) => {
+                                    if (err3) return callback(err3);
+                                    callback(null, { paymentEventId: eventResult.insertId, reservationId: paymentData.reservationId });
+                                });
+                            });
+                        } else {
+                            callback(null, { paymentEventId: eventResult.insertId, reservationId: paymentData.reservationId });
+                        }
                     });
                 }
             );
