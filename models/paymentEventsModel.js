@@ -142,28 +142,35 @@ const createPaymentEventAndFailReservation = (paymentData, callback) => {
             return callback({ message: 'A FAILED payment event already exists for this reservationId.' });
         }
 
-        // Crear el evento de pago
-        const insertEventSql = `
-            INSERT INTO paymentEvents (paymentStatus, reservationId, externalUserId)
-            VALUES (?, ?, ?)
-        `;
-        db.query(
-            insertEventSql,
-            [paymentData.paymentStatus, paymentData.reservationId, paymentData.externalUserId],
-            (err, eventResult) => {
-                if (err) return callback(err);
+        // Obtener el totalPrice de la reserva para el campo amount
+        const getAmountSql = `SELECT totalPrice FROM reservations WHERE reservationId = ?`;
+        db.query(getAmountSql, [paymentData.reservationId], (err2, rows) => {
+            if (err2) return callback(err2);
+            const amount = rows[0] ? rows[0].totalPrice : 0;
 
-                // Marcar la reserva como FAILED solo si no está ya en ese estado
-                const updateReservationSql = `
-                    UPDATE reservations SET status = 'FAILED'
-                    WHERE reservationId = ? AND status != 'FAILED'
-                `;
-                db.query(updateReservationSql, [paymentData.reservationId], (err, resResult) => {
+            // Crear el evento de pago con amount
+            const insertEventSql = `
+                INSERT INTO paymentEvents (paymentStatus, reservationId, externalUserId, amount)
+                VALUES (?, ?, ?, ?)
+            `;
+            db.query(
+                insertEventSql,
+                [paymentData.paymentStatus, paymentData.reservationId, paymentData.externalUserId, amount],
+                (err, eventResult) => {
                     if (err) return callback(err);
-                    callback(null, { paymentEventId: eventResult.insertId, reservationId: paymentData.reservationId });
-                });
-            }
-        );
+
+                    // Marcar la reserva como FAILED solo si no está ya en ese estado
+                    const updateReservationSql = `
+                        UPDATE reservations SET status = 'FAILED'
+                        WHERE reservationId = ? AND status != 'FAILED'
+                    `;
+                    db.query(updateReservationSql, [paymentData.reservationId], (err, resResult) => {
+                        if (err) return callback(err);
+                        callback(null, { paymentEventId: eventResult.insertId, reservationId: paymentData.reservationId });
+                    });
+                }
+            );
+        });
     });
 };
 
