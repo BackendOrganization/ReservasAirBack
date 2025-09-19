@@ -179,12 +179,12 @@ const createPaymentEventAndFailReservation = (paymentData, callback) => {
                     db.query(updateReservationSql, [paymentData.reservationId], (err, resResult) => {
                         if (err) return callback(err);
 
-                        // Actualizar asientos a AVAILABLE
+                        // Actualizar asientos a AVAILABLE si están RESERVED
                         if (seatIds.length > 0 && externalFlightId) {
                             const placeholders = seatIds.map(() => '?').join(',');
                             const updateSeatsSql = `
                                 UPDATE seats SET status = 'AVAILABLE'
-                                WHERE seatId IN (${placeholders}) AND externalFlightId = ? AND status = 'CONFIRMED'
+                                WHERE seatId IN (${placeholders}) AND externalFlightId = ? AND status = 'RESERVED'
                             `;
                             db.query(updateSeatsSql, [...seatIds, externalFlightId], (err2) => {
                                 if (err2) return callback(err2);
@@ -195,10 +195,11 @@ const createPaymentEventAndFailReservation = (paymentData, callback) => {
                                     SET freeSeats = freeSeats + ?, occupiedSeats = occupiedSeats - ?
                                     WHERE externalFlightId = ?
                                 `;
-                                db.query(updateFlightSql, [seatsCount, seatsCount, externalFlightId], (err3) => {
-                                    if (err3) return callback(err3);
-                                    callback(null, { paymentEventId: eventResult.insertId, reservationId: paymentData.reservationId });
-                                });
+                                db.query(updateFlightSql, [seatsCount, seatsCount, externalFlightId],
+                                    (err3) => {
+                                        if (err3) return callback(err3);
+                                        callback(null, { paymentEventId: eventResult.insertId, reservationId: paymentData.reservationId });
+                                    });
                             });
                         } else {
                             callback(null, { paymentEventId: eventResult.insertId, reservationId: paymentData.reservationId });
