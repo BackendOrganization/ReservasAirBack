@@ -31,6 +31,16 @@ const aircraftConfig = {
     }
 };
 
+// ✅ FUNCIÓN PARA CALCULAR TOTAL DE ASIENTOS POR AERONAVE
+const calculateTotalSeats = (aircraft) => {
+    const config = aircraftConfig[aircraft];
+    if (!config) return 0;
+    
+    return config.categories.reduce((total, category) => {
+        return total + (category.rows * config.seatsPerRow);
+    }, 0);
+};
+
 // Función para generar asientos
 const generateSeats = (externalFlightId, aircraft, callback) => {
     const config = aircraftConfig[aircraft];
@@ -93,6 +103,9 @@ const insertFlight = (flightData, callback) => {
             });
         }
 
+        // ✅ CALCULAR ASIENTOS LIBRES SEGÚN EL TIPO DE AERONAVE
+        const totalSeats = calculateTotalSeats(flightData.aircraft);
+
         const sql = `
             INSERT INTO flights (
                 externalFlightId,
@@ -117,8 +130,8 @@ const insertFlight = (flightData, callback) => {
                 JSON.stringify(flightData.destination),
                 flightData.flightDate,
                 flightData.duration,
-                flightData.freeSeats || 0,
-                0 // occupiedSeats lo manejamos nosotros, siempre inicia en 0
+                totalSeats, // ✅ A330=288, E190=112, B737=180
+                0 // occupiedSeats siempre inicia en 0
             ],
             (err, result) => {
                 if (err) return callback(err);
@@ -135,11 +148,20 @@ const insertFlight = (flightData, callback) => {
                         return;
                     }
                     
-                    // Retornar resultado exitoso con información de asientos creados
-                    callback(null, {
-                        ...result,
-                        seatsCreated: seatsResult.seatsCreated,
-                        flightId: flightData.id
+                    // ✅ ACTUALIZAR freeSeats CON LOS ASIENTOS REALMENTE CREADOS
+                    const updateSql = 'UPDATE flights SET freeSeats = ? WHERE externalFlightId = ?';
+                    db.query(updateSql, [seatsResult.seatsCreated, flightData.id], (updateErr) => {
+                        if (updateErr) {
+                            console.error('Error updating freeSeats:', updateErr);
+                        }
+                        
+                        // Retornar resultado exitoso con información de asientos creados
+                        callback(null, {
+                            ...result,
+                            seatsCreated: seatsResult.seatsCreated,
+                            flightId: flightData.id,
+                            totalSeats: totalSeats
+                        });
                     });
                 });
             }
@@ -182,4 +204,4 @@ const getAllFlights = (callback) => {
     db.query(sql, callback);
 };
 
-module.exports = { insertFlight, cancelReservationsByFlight, getAllFlights };
+module.exports = { insertFlight, cancelReservationsByFlight, getAllFlights, calculateTotalSeats };
