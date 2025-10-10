@@ -1,16 +1,18 @@
 const express = require("express");
 const app = express();
-const PORT = process.env.PORT || 8080; // <-- usa el puerto asignado por Render
+const PORT = process.env.PORT || 8080;
 const dotenv = require('dotenv').config();
 const cors = require('cors');
 
-app.use(cors({ origin: true })); // <-- acepta cualquier origen
+// Importar inicializador de Kafka
+const { initializeKafka } = require('./utils/kafkaInitializer');
+
+app.use(cors({ origin: true }));
 app.use(express.json());
 
 app.get("/", (req, res) => {
-  res.send("Welcome to ReservasAirBack  TATAATATA🚀");
+  res.send("Welcome to ReservasAirBack with Kafka Payment Events! 🚀📡💳");
 });
-
 
 const seatsRoutes = require('./routes/seatsRoutes');
 const reservationsRoutes = require('./routes/reservationsRoutes');
@@ -30,8 +32,12 @@ const swaggerDocument = yaml.load(fs.readFileSync(path.join(__dirname, 'utils', 
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-
-
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`📚 API Documentation available at http://localhost:${PORT}/api-docs`);
+  
+  // Inicializar Kafka después de que el servidor esté listo
+  setTimeout(async () => {
+    await initializeKafka();
+  }, 2000); // Esperar 2 segundos para que el servidor esté completamente listo
 });
