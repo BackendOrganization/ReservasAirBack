@@ -41,5 +41,5 @@ app.listen(PORT, async () => {
   // Inicializar Kafka después de que el servidor esté listo
   setTimeout(async () => {
     await initializeKafka();
-  }, 2000); // Esperar 2 segundos para que el servidor esté completamente listo
+  }, 10000); // Esperar 10 segundos para que Kafka esté completamente listo
 });

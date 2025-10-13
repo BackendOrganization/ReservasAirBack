@@ -99,22 +99,38 @@ class KafkaConsumerService {
       case 'PAYMENT_SUCCESS':
         await this.processPaymentSuccess(paymentData);
         break;
-      
       case 'PAYMENT_FAILED':
+      case 'PAYMENT_TIMEOUT': // Ahora los timeouts se tratan como fallidos
         await this.processPaymentFailed(paymentData);
         break;
-      
-      case 'PAYMENT_TIMEOUT':
-        await this.processPaymentTimeout(paymentData);
+      case 'PAYMENT_CANCELLED':
+        await this.processPaymentCancelled(paymentData);
         break;
-      
       case 'PAYMENT_REFUND':
         await this.processPaymentRefund(paymentData);
         break;
-      
       default:
         console.log(`⚠️ Unknown payment event type: ${eventType}`);
     }
+  }
+
+  async processPaymentCancelled(paymentData) {
+    return new Promise((resolve, reject) => {
+      paymentEventsModel.cancelPayment(
+        paymentData.reservationId,
+        paymentData.externalUserId,
+        (err, result) => {
+          if (err) {
+            console.error('❌ Error processing payment cancelled via Kafka:', err);
+            reject(err);
+          } else {
+            console.log('🟡 Payment cancelled processed via Kafka');
+            console.log('Result:', result);
+            resolve(result);
+          }
+        }
+      );
+    });
   }
 
   async handleReservationEvent(message) {
@@ -202,15 +218,6 @@ class KafkaConsumerService {
     });
   }
 
-  async processPaymentTimeout(paymentData) {
-    console.log('⏰ Processing payment timeout for reservation:', paymentData.reservationId);
-    
-    // Un timeout es esencialmente un pago fallido
-    return this.processPaymentFailed({
-      ...paymentData,
-      reason: 'TIMEOUT'
-    });
-  }
 
   // === RESERVATION EVENT HANDLERS ===
   
@@ -231,10 +238,6 @@ class KafkaConsumerService {
     });
   }
 
-  async processReservationReminder(reservationData) {
-    console.log('🔔 Processing reservation reminder for:', reservationData.reservationId);
-    // Implementar lógica de recordatorios aquí
-  }
 
   async disconnect() {
     try {
