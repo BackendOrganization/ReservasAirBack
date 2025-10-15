@@ -62,3 +62,33 @@ exports.cancelFlightReservations = (req, res) => {
         res.json({ message: 'Reservations cancelled', ...result });
     });
 };
+
+// ✅ NUEVO: Cambiar estado del vuelo a DELAYED
+exports.updateFlightToDelayed = (req, res) => {
+    const { externalFlightId } = req.params;
+    
+    if (!externalFlightId) {
+        return res.status(400).json({ 
+            error: 'Missing required parameter: externalFlightId' 
+        });
+    }
+
+    flightsModel.updateFlightToDelayed(externalFlightId, (err, result) => {
+        if (err) {
+            console.error('Error updating flight to delayed:', err);
+            
+            if (err.message === 'Flight not found') {
+                return res.status(404).json({ 
+                    error: 'Flight not found',
+                    flightId: externalFlightId
+                });
+            }
+            
+            return res.status(500).json({ 
+                error: 'Error updating flight status' 
+            });
+        }
+
+        res.status(200).json(result);
+    });
+};

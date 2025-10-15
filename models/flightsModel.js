@@ -116,8 +116,9 @@ const insertFlight = (flightData, callback) => {
                 flightDate,
                 duration,
                 freeSeats,
-                occupiedSeats
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                occupiedSeats,
+                flightStatus
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
         
         db.query(
@@ -131,7 +132,8 @@ const insertFlight = (flightData, callback) => {
                 flightData.flightDate,
                 flightData.duration,
                 totalSeats, // ✅ A330=288, E190=112, B737=180
-                0 // occupiedSeats siempre inicia en 0
+                0, // occupiedSeats siempre inicia en 0
+                'ONTIME' // ✅ NUEVO: flightStatus por defecto
             ],
             (err, result) => {
                 if (err) return callback(err);
@@ -160,7 +162,8 @@ const insertFlight = (flightData, callback) => {
                             ...result,
                             seatsCreated: seatsResult.seatsCreated,
                             flightId: flightData.id,
-                            totalSeats: totalSeats
+                            totalSeats: totalSeats,
+                            flightStatus: 'ONTIME' // ✅ NUEVO: Confirmar en respuesta
                         });
                     });
                 });
@@ -213,4 +216,30 @@ const getAllFlights = (callback) => {
     db.query(sql, callback);
 };
 
-module.exports = { insertFlight, cancelReservationsByFlight, getAllFlights, calculateTotalSeats };
+// ✅ NUEVO: Cambiar estado del vuelo a DELAYED
+const updateFlightToDelayed = (externalFlightId, callback) => {
+    const sql = 'UPDATE flights SET flightStatus = ? WHERE externalFlightId = ?';
+    db.query(sql, ['DELAYED', externalFlightId], (err, result) => {
+        if (err) return callback(err);
+        
+        if (result.affectedRows === 0) {
+            return callback({ message: 'Flight not found' });
+        }
+        
+        callback(null, {
+            success: true,
+            message: 'Flight status updated to DELAYED',
+            flightId: externalFlightId,
+            flightStatus: 'DELAYED',
+            affectedRows: result.affectedRows
+        });
+    });
+};
+
+module.exports = { 
+    insertFlight, 
+    cancelReservationsByFlight, 
+    getAllFlights, 
+    calculateTotalSeats,
+    updateFlightToDelayed // ✅ NUEVO
+};
