@@ -1,6 +1,7 @@
 const kafka = require('./kafka');
 const paymentEventsModel = require('../models/paymentEventsModel');
 const reservationsModel = require('../models/reservationsModel');
+const flightsModel = require('../models/flightsModel'); // ✅ NUEVO
 
 class KafkaConsumerService {
   constructor() {
@@ -85,6 +86,10 @@ class KafkaConsumerService {
         await this.handleReservationEvent(message);
         break;
       
+      case 'flight-events': // ✅ NUEVO
+        await this.handleFlightEvent(message);
+        break;
+      
       default:
         console.log(`⚠️ Unknown topic: ${topic}`);
     }
@@ -150,6 +155,47 @@ class KafkaConsumerService {
       default:
         console.log(`⚠️ Unknown reservation event type: ${eventType}`);
     }
+  }
+
+  // ✅ NUEVO: FLIGHT EVENT HANDLER (solo DELAYED)
+  async handleFlightEvent(message) {
+    console.log('✈️ Processing flight event:', message);
+    
+    const { flightId, newStatus, newDepartureAt, newArrivalAt } = message;
+    
+    // Validar que tengamos los campos requeridos
+    if (!flightId || !newStatus) {
+        console.error('❌ Missing required fields: flightId or newStatus');
+        return;
+    }
+    
+    console.log(`✈️ Flight ${flightId} status change to: ${newStatus}`);
+    
+    // Solo manejar DELAYED por ahora
+    if (newStatus.toUpperCase() === 'DELAYED') {
+        await this.processFlightDelayed(flightId, message);
+    } else {
+        console.log(`⚠️ Flight status ${newStatus} not handled yet`);
+    }
+  }
+
+  // ✅ NUEVO: FLIGHT DELAYED HANDLER
+  async processFlightDelayed(flightId, flightData) {
+    return new Promise((resolve, reject) => {
+        console.log(`🕐 Processing flight delay for flight: ${flightId}`);
+        
+        flightsModel.updateFlightToDelayed(flightId, (err, result) => {
+            if (err) {
+                console.error('❌ Error updating flight to delayed via Kafka:', err);
+                reject(err);
+            } else {
+                console.log('✅ Flight marked as DELAYED successfully via Kafka');
+                console.log('Result:', result);
+                              
+                resolve(result);
+            }
+        });
+    });
   }
 
   // === PAYMENT EVENT HANDLERS ===
@@ -218,7 +264,6 @@ class KafkaConsumerService {
     });
   }
 
-
   // === RESERVATION EVENT HANDLERS ===
   
   async processReservationExpiration(reservationData) {
@@ -237,7 +282,6 @@ class KafkaConsumerService {
       );
     });
   }
-
 
   async disconnect() {
     try {
