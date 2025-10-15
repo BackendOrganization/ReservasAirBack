@@ -189,7 +189,7 @@ const cancelReservationsByFlight = (externalFlightId, callback) => {
             if (reservations.length === 0) return callback(null, { updated: 0, events: [] });
             
             const reservationIds = reservations.map(r => r.reservationId);
-            const updateSql = `UPDATE reservations SET status = 'CANCELLED' WHERE reservationId IN (?)`;
+            const updateSql = `UPDATE reservations SET status = 'PENDING' WHERE reservationId IN (?)`;
             db.query(updateSql, [reservationIds], (err2) => {
                 if (err2) return callback(err2);
                 
