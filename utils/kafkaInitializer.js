@@ -47,7 +47,7 @@ const initializePaymentKafka = () => {
 // Función de conveniencia para inicializar todos los topics
 const initializeAllKafka = () => {
   return initializeKafka({
-    topics: ['payment-events', 'reservation-events'],
+    topics: ['payment-events', 'reservation-events', 'flight-events'], // ✅ Solo agregar 'flight-events'
     delayMs: 2000
   });
 };
