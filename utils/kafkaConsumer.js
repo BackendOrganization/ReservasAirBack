@@ -1,6 +1,6 @@
 const kafka = require('./kafka');
 const paymentEventsModel = require('../models/paymentEventsModel');
-const reservationsModel = require('../models/reservationsModel');
+
 const flightsModel = require('../models/flightsModel'); // ✅ NUEVO
 
 class KafkaConsumerService {
@@ -76,36 +76,32 @@ class KafkaConsumerService {
     });
   }
 
+  // === TOPIC ROUTING ===
   async routeMessage(topic, message, messageKey) {
     switch (topic) {
       case 'payment-events':
+        // === PAYMENT EVENTS SEGMENT ===
         await this.handlePaymentEvent(message);
         break;
-      
-      case 'reservation-events':
-        await this.handleReservationEvent(message);
-        break;
-      
-      case 'flight-events': // ✅ NUEVO
+      case 'flight-events':
+        // === FLIGHT EVENTS SEGMENT ===
         await this.handleFlightEvent(message);
         break;
-      
       default:
         console.log(`⚠️ Unknown topic: ${topic}`);
     }
   }
 
+  // === PAYMENT EVENTS SEGMENT ===
   async handlePaymentEvent(message) {
     console.log('💳 Processing payment event:', message);
-    
     const { eventType, paymentData, metadata } = message;
-    
     switch (eventType) {
       case 'PAYMENT_SUCCESS':
         await this.processPaymentSuccess(paymentData);
         break;
       case 'PAYMENT_FAILED':
-      case 'PAYMENT_TIMEOUT': // Ahora los timeouts se tratan como fallidos
+      case 'PAYMENT_TIMEOUT':
         await this.processPaymentFailed(paymentData);
         break;
       case 'PAYMENT_CANCELLED':
@@ -138,63 +134,31 @@ class KafkaConsumerService {
     });
   }
 
-  async handleReservationEvent(message) {
-    console.log('🎫 Processing reservation event:', message);
-    
-    const { eventType, reservationData, metadata } = message;
-    
-    switch (eventType) {
-      case 'RESERVATION_EXPIRED':
-        await this.processReservationExpiration(reservationData);
-        break;
-      
-      case 'RESERVATION_REMINDER':
-        await this.processReservationReminder(reservationData);
-        break;
-      
-      default:
-        console.log(`⚠️ Unknown reservation event type: ${eventType}`);
-    }
-  }
 
-  // ✅ NUEVO: FLIGHT EVENT HANDLER (solo DELAYED)
+
+  // === FLIGHT EVENTS SEGMENT ===
   async handleFlightEvent(message) {
     console.log('✈️ Processing flight event:', message);
-    
-    const { flightId, newStatus, newDepartureAt, newArrivalAt } = message;
-    
-    // Validar que tengamos los campos requeridos
-    if (!flightId || !newStatus) {
-        console.error('❌ Missing required fields: flightId or newStatus');
-        return;
+    const { flightId } = message;
+    if (!flightId) {
+      console.error('❌ Missing required field: flightId');
+      return;
     }
-    
-    console.log(`✈️ Flight ${flightId} status change to: ${newStatus}`);
-    
-    // Solo manejar DELAYED por ahora
-    if (newStatus.toUpperCase() === 'DELAYED') {
-        await this.processFlightDelayed(flightId, message);
-    } else {
-        console.log(`⚠️ Flight status ${newStatus} not handled yet`);
-    }
+    await this.processFlightUpdate(message);
   }
 
-  // ✅ NUEVO: FLIGHT DELAYED HANDLER
-  async processFlightDelayed(flightId, flightData) {
+  async processFlightUpdate(flightData) {
     return new Promise((resolve, reject) => {
-        console.log(`🕐 Processing flight delay for flight: ${flightId}`);
-        
-        flightsModel.updateFlightToDelayed(flightId, (err, result) => {
-            if (err) {
-                console.error('❌ Error updating flight to delayed via Kafka:', err);
-                reject(err);
-            } else {
-                console.log('✅ Flight marked as DELAYED successfully via Kafka');
-                console.log('Result:', result);
-                              
-                resolve(result);
-            }
-        });
+      flightsModel.updateFlightFields(flightData, (err, result) => {
+        if (err) {
+          console.error('❌ Error updating flight via Kafka:', err);
+          reject(err);
+        } else {
+          console.log('✅ Flight updated successfully via Kafka');
+          console.log('Result:', result);
+          resolve(result);
+        }
+      });
     });
   }
 
@@ -264,24 +228,7 @@ class KafkaConsumerService {
     });
   }
 
-  // === RESERVATION EVENT HANDLERS ===
-  
-  async processReservationExpiration(reservationData) {
-    return new Promise((resolve, reject) => {
-      reservationsModel.cancelReservation(
-        reservationData.reservationId,
-        (err, result) => {
-          if (err) {
-            console.error('❌ Error expiring reservation via Kafka:', err);
-            reject(err);
-          } else {
-            console.log('✅ Reservation expired successfully via Kafka');
-            resolve(result);
-          }
-        }
-      );
-    });
-  }
+
 
   async disconnect() {
     try {
