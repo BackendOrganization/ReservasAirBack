@@ -212,7 +212,7 @@ const cancelReservationsByFlight = (externalFlightId, callback) => {
 
 // Obtener todos los vuelos
 const getAllFlights = (callback) => {
-    const sql = 'SELECT * FROM flights';
+    const sql = 'SELECT * FROM flights where flightStatus!= "CANCELLED"';
     db.query(sql, callback);
 };
 
