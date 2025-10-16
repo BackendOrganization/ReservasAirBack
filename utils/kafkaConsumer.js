@@ -139,12 +139,109 @@ class KafkaConsumerService {
   // === FLIGHT EVENTS SEGMENT ===
   async handleFlightEvent(message) {
     console.log('✈️ Processing flight event:', message);
-    const { flightId } = message;
+    
+    // ✅ NUEVO: Verificar si el vuelo está siendo cancelado
+    const { flightId, newStatus } = message;
+    
+    if (newStatus && newStatus.toUpperCase() === 'CANCELLED') {
+      console.log(`❌ Flight ${flightId} is being cancelled - processing cancellations`);
+      await this.processCancelledFlight(flightId);
+      return; // Salir después de procesar la cancelación
+    }
+    
+    // Si el mensaje tiene todos los campos requeridos para creación, ingesta
+    const requiredFields = [
+      'flightId', 'flightNumber', 'origin', 'destination', 'aircraftModel',
+      'departureAt', 'arrivalAt', 'status', 'price', 'currency'
+    ];
+    const isCreate = requiredFields.every(f => message.hasOwnProperty(f));
+    if (isCreate) {
+      // Adaptar el body al esperado por el controller
+      // Parsear origin y destination correctamente
+      const parseLocation = (code, dateStr) => {
+        // Puedes mapear el código a ciudad si tienes un diccionario, aquí solo ejemplo simple
+        const cityMap = { EZE: 'Buenos Aires', MDZ: 'Mendoza' };
+        const date = new Date(dateStr);
+        const hh = String(date.getUTCHours()).padStart(2, '0');
+        const min = String(date.getUTCMinutes()).padStart(2, '0');
+        return {
+          city: cityMap[code] || code,
+          code,
+          time: `${hh}:${min}`
+        };
+      };
+      // Calcular duración en minutos
+      let duration = null;
+      try {
+        const dep = new Date(message.departureAt);
+        const arr = new Date(message.arrivalAt);
+        if (!isNaN(dep) && !isNaN(arr)) {
+          const totalMinutes = Math.round((arr - dep) / 60000);
+          const hours = Math.floor(totalMinutes / 60);
+          const minutes = totalMinutes % 60;
+          duration = `${hours}h ${minutes.toString().padStart(2, '0')}m`;
+        }
+      } catch (e) { duration = null; }
+      const flightData = {
+        id: message.flightId,
+        flightNumber: message.flightNumber,
+        origin: parseLocation(message.origin, message.departureAt),
+        destination: parseLocation(message.destination, message.arrivalAt),
+        aircraft: message.aircraftModel,
+        aircraftModel: message.aircraftModel,
+        flightDate: message.departureAt.split('T')[0],
+        duration
+      };
+      // Llamar al controller directamente
+      const flightsController = require('../controllers/flightsController');
+      // Simular req/res para el controller
+      const req = { body: flightData };
+      const res = {
+        status: (code) => ({ json: (obj) => console.log(`[IngestFlight][${code}]`, obj) }),
+        json: (obj) => console.log('[IngestFlight][json]', obj)
+      };
+      flightsController.ingestFlight(req, res);
+      return;
+    }
+    // Si no es creación, actualizar campos
     if (!flightId) {
       console.error('❌ Missing required field: flightId');
       return;
     }
     await this.processFlightUpdate(message);
+  }
+
+  // ✅ NUEVA: Función para procesar vuelos cancelados
+  async processCancelledFlight(flightId) {
+    return new Promise((resolve, reject) => {
+      console.log(`❌ Processing flight cancellation for flight: ${flightId}`);
+      
+      const flightsController = require('../controllers/flightsController');
+      
+      // Simular req/res para el controller
+      const req = { 
+        params: { externalFlightId: flightId }
+      };
+      const res = {
+        status: (code) => ({
+          json: (obj) => {
+            console.log(`[CancelFlight][${code}]`, obj);
+            if (code >= 200 && code < 300) {
+              resolve(obj);
+            } else {
+              reject(new Error(`Cancel flight failed with status ${code}: ${JSON.stringify(obj)}`));
+            }
+          }
+        }),
+        json: (obj) => {
+          console.log('[CancelFlight][success]', obj);
+          resolve(obj);
+        }
+      };
+      
+      // Llamar al controller para cancelar todas las reservas del vuelo
+      flightsController.cancelFlightReservations(req, res);
+    });
   }
 
   async processFlightUpdate(flightData) {
