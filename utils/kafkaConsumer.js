@@ -139,6 +139,16 @@ class KafkaConsumerService {
   // === FLIGHT EVENTS SEGMENT ===
   async handleFlightEvent(message) {
     console.log('✈️ Processing flight event:', message);
+    
+    // ✅ NUEVO: Verificar si el vuelo está siendo cancelado
+    const { flightId, newStatus } = message;
+    
+    if (newStatus && newStatus.toUpperCase() === 'CANCELLED') {
+      console.log(`❌ Flight ${flightId} is being cancelled - processing cancellations`);
+      await this.processCancelledFlight(flightId);
+      return; // Salir después de procesar la cancelación
+    }
+    
     // Si el mensaje tiene todos los campos requeridos para creación, ingesta
     const requiredFields = [
       'flightId', 'flightNumber', 'origin', 'destination', 'aircraftModel',
@@ -194,12 +204,44 @@ class KafkaConsumerService {
       return;
     }
     // Si no es creación, actualizar campos
-    const { flightId } = message;
     if (!flightId) {
       console.error('❌ Missing required field: flightId');
       return;
     }
     await this.processFlightUpdate(message);
+  }
+
+  // ✅ NUEVA: Función para procesar vuelos cancelados
+  async processCancelledFlight(flightId) {
+    return new Promise((resolve, reject) => {
+      console.log(`❌ Processing flight cancellation for flight: ${flightId}`);
+      
+      const flightsController = require('../controllers/flightsController');
+      
+      // Simular req/res para el controller
+      const req = { 
+        params: { externalFlightId: flightId }
+      };
+      const res = {
+        status: (code) => ({
+          json: (obj) => {
+            console.log(`[CancelFlight][${code}]`, obj);
+            if (code >= 200 && code < 300) {
+              resolve(obj);
+            } else {
+              reject(new Error(`Cancel flight failed with status ${code}: ${JSON.stringify(obj)}`));
+            }
+          }
+        }),
+        json: (obj) => {
+          console.log('[CancelFlight][success]', obj);
+          resolve(obj);
+        }
+      };
+      
+      // Llamar al controller para cancelar todas las reservas del vuelo
+      flightsController.cancelFlightReservations(req, res);
+    });
   }
 
   async processFlightUpdate(flightData) {

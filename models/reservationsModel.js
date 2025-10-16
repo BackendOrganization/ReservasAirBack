@@ -230,73 +230,33 @@ const cancelReservation = (reservationId, callback) => {
             return callback(null, { success: false, message: 'Only PAID reservations can be cancelled.' });
         }
 
-        // Contar asientos de la reserva
+        // Contar asientos de la reserva (solo para información)
         let seatIds = [];
         try {
             seatIds = Array.isArray(reservation.seatId) ? reservation.seatId : JSON.parse(reservation.seatId);
         } catch {
             seatIds = [reservation.seatId];
         }
-        const seatsCount = seatIds.length; // ✅ Cantidad de asientos a liberar
+        const seatsCount = seatIds.length;
 
         // Actualizar estado de la reserva
         const cancelQuery = `UPDATE reservations SET status = 'PENDING' WHERE reservationId = ?`;
         db.query(cancelQuery, [reservationId], (err2) => {
             if (err2) return callback(err2);
 
-            // ✅ ACTUALIZAR CONTADORES EN FLIGHTS - SUMAR freeSeats Y RESTAR occupiedSeats
-            const updateFlightQuery = `
-                UPDATE flights 
-                SET freeSeats = freeSeats + ?, occupiedSeats = occupiedSeats - ?
-                WHERE externalFlightId = ?
+            // Crear evento PENDING_REFUND
+            const pendingEventQuery = `
+                INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount)
+                VALUES (?, ?, 'PENDING_REFUND', ?)
             `;
-            db.query(updateFlightQuery, [seatsCount, seatsCount, reservation.externalFlightId], (err3) => {
-                if (err3) {
-                    console.error('Error updating flight counters on cancellation:', err3);
-                    // Continuar aunque falle el contador
-                }
-
-                // Liberar asientos
-                if (seatIds.length > 0) {
-                    const placeholders = seatIds.map(() => '?').join(',');
-                    const releaseSeatsQuery = `
-                        UPDATE seats SET status = 'AVAILABLE'
-                        WHERE seatId IN (${placeholders}) AND externalFlightId = ? AND status = 'CONFIRMED'
-                    `;
-                    db.query(releaseSeatsQuery, [...seatIds, reservation.externalFlightId], (err4) => {
-                        if (err4) {
-                            console.error('Error releasing seats:', err4);
-                        }
-
-                        // Crear evento PENDING
-                        const pendingEventQuery = `
-                            INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount)
-                            VALUES (?, ?, 'PENDING', ?)
-                        `;
-                        db.query(pendingEventQuery, [reservationId, reservation.externalUserId, reservation.totalPrice], (err5) => {
-                            if (err5) return callback(err5);
-                            callback(null, { 
-                                success: true, 
-                                message: 'Reservation cancelled, seats released, and counters updated.',
-                                seatsCancelled: seatsCount
-                            });
-                        });
-                    });
-                } else {
-                    // Crear evento PENDING si no hay asientos
-                    const pendingEventQuery = `
-                        INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount)
-                        VALUES (?, ?, 'PENDING', ?)
-                    `;
-                    db.query(pendingEventQuery, [reservationId, reservation.externalUserId, reservation.totalPrice], (err4) => {
-                        if (err4) return callback(err4);
-                        callback(null, { 
-                            success: true, 
-                            message: 'Reservation cancelled and counters updated.',
-                            seatsCancelled: seatsCount
-                        });
-                    });
-                }
+            db.query(pendingEventQuery, [reservationId, reservation.externalUserId, reservation.totalPrice], (err3) => {
+                if (err3) return callback(err3);
+                callback(null, { 
+                    success: true, 
+                    message: 'Reservation cancelled and refund pending.',
+                    seatsCancelled: seatsCount,
+                    note: 'Seats remain reserved, counters unchanged'
+                });
             });
         });
     });
