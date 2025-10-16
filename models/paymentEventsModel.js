@@ -117,9 +117,9 @@ const cancelPayment = (reservationId, externalUserId, callback) => {
 
         const reservation = reservationRows[0];
         console.log('[cancelPayment] Current reservation status:', reservation.status);
-        if (reservation.status !== 'PENDING') {
-          console.warn('[cancelPayment] Only PENDING reservations can be refunded. Current status:', reservation.status);
-          return connection.rollback(() => { connection.release(); callback(null, { success: false, message: 'Only PENDING reservations can be refunded.' }); });
+        if (reservation.status !== 'PENDING' && reservation.status !== 'PENDING_REFUND') {
+          console.warn('[cancelPayment] Only PENDING or PENDING_REFUND reservations can be refunded. Current status:', reservation.status);
+          return connection.rollback(() => { connection.release(); callback(null, { success: false, message: 'Only PENDING or PENDING_REFUND reservations can be refunded.' }); });
         }
 
         const checkRefundQuery = `SELECT eventId FROM paymentEvents WHERE reservationId = ? AND paymentStatus = 'REFUND' LIMIT 1`;

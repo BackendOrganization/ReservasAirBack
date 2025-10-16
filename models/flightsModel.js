@@ -126,7 +126,7 @@ const insertFlight = (flightData, callback) => {
             [
                 flightData.id,
                 flightData.aircraft,
-                flightData.aircraftModel,
+                flightData.flightNumber, // Guardar flightNumber en aircraftModel
                 JSON.stringify(flightData.origin),
                 JSON.stringify(flightData.destination),
                 flightData.flightDate,
@@ -189,14 +189,28 @@ const cancelReservationsByFlight = (externalFlightId, callback) => {
             if (reservations.length === 0) return callback(null, { updated: 0, events: [] });
             
             const reservationIds = reservations.map(r => r.reservationId);
-            const updateSql = `UPDATE reservations SET status = 'PENDING' WHERE reservationId IN (?)`;
+            // CAMBIO: ahora el estado es PENDING_REFUND
+            const updateSql = `UPDATE reservations SET status = 'PENDING_REFUND' WHERE reservationId IN (?)`;
             db.query(updateSql, [reservationIds], (err2) => {
                 if (err2) return callback(err2);
-                
+
+                // Liberar asientos de reservas que estaban en PENDING
+                const pendingReservations = reservations.filter(r => r.status === 'PENDING');
+                if (pendingReservations.length > 0) {
+                    pendingReservations.forEach(r => {
+                        const seatIds = Array.isArray(r.seatId) ? r.seatId : (typeof r.seatId === 'string' ? JSON.parse(r.seatId) : []);
+                        if (seatIds.length > 0) {
+                            const placeholders = seatIds.map(() => '?').join(',');
+                            const updateSeatsSql = `UPDATE seats SET status = 'AVAILABLE' WHERE seatId IN (${placeholders}) AND externalFlightId = ?`;
+                            db.query(updateSeatsSql, [...seatIds, externalFlightId], () => {});
+                        }
+                    });
+                }
+
                 const events = [];
                 let pending = reservations.length;
                 reservations.forEach(r => {
-                    // ✅ CAMBIO 2: 'REFUND' → 'pending_refund'
+                    // El evento de pago sigue igual
                     const eventSql = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'PENDING_REFUND', ?)`;
                     db.query(eventSql, [r.reservationId, r.externalUserId, r.totalPrice], (err3, result) => {
                         if (err3) return callback(err3);
