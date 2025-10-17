@@ -1,59 +1,30 @@
-const KafkaConsumerService = require('./kafkaConsumer');
+// Adaptación: inicialización directa del consumidor KafkaJS externo
+const { Kafka } = require('kafkajs');
 
-const initializeKafka = async (options = {}) => {
-  const {
-    topics = ['payment-events'],
-    delayMs = 2000,
-    enableGracefulShutdown = true
-  } = options;
+const kafka = new Kafka({
+  clientId: 'reservas-air-back',
+  brokers: ['34.172.179.60:9094'],
+});
 
-  const kafkaConsumer = new KafkaConsumerService();
-  
+async function initializeKafka({ topic = 'flights.events', groupId = 'reservas-air-back-group' } = {}) {
+  const consumer = kafka.consumer({ groupId });
   try {
-    console.log('🔄 Initializing Kafka Consumer for Payment Events...');
-    
-    await kafkaConsumer.connect();
-    
-    // Suscribirse a los topics especificados
-    await kafkaConsumer.subscribe(topics);
-    
-    // Configurar graceful shutdown si está habilitado
-    if (enableGracefulShutdown) {
-      kafkaConsumer.setupGracefulShutdown();
-    }
-    
-    // Iniciar el consumer
-    await kafkaConsumer.startListening();
-    
-    console.log(`✅ Kafka Consumer initialized and listening for topics: ${topics.join(', ')}`);
-    
-    return kafkaConsumer;
-    
+    await consumer.connect();
+    await consumer.subscribe({ topic, fromBeginning: true });
+    await consumer.run({
+      eachMessage: async ({ topic, partition, message }) => {
+        const key = message.key?.toString() || '';
+        const value = message.value?.toString() || '';
+        console.log(`[${topic}] ${key} -> ${value}`);
+        // Aquí puedes agregar lógica para procesar el evento recibido
+      },
+    });
+    console.log(`✅ Kafka Consumer initialized and listening for topic: ${topic}`);
+    return consumer;
   } catch (error) {
     console.error('❌ Failed to initialize Kafka Consumer:', error);
-    console.log('⚠️ Server will continue without Kafka (payment events via REST API only)');
     return null;
   }
-};
+}
 
-// Función de conveniencia para inicializar solo payment events
-const initializePaymentKafka = () => {
-  return initializeKafka({
-    topics: ['payment-events'],
-    delayMs: 2000
-  });
-};
-
-// Función de conveniencia para inicializar todos los topics
-const initializeAllKafka = () => {
-  return initializeKafka({
-    topics: ['payment-events', 'reservation-events', 'flight-events'], // ✅ Solo agregar 'flight-events'
-    delayMs: 2000
-  });
-};
-
-module.exports = { 
-  initializeKafka, 
-  initializePaymentKafka, 
-  initializeAllKafka 
-};
+module.exports = { initializeKafka };

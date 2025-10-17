@@ -30,7 +30,6 @@ services:
     volumes:
       - kafka-data:/var/lib/kafka/data
 
-  # 🆕 KAFKA UI - Interfaz Web
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
@@ -38,7 +37,7 @@ services:
       - kafka
       - zookeeper
     ports:
-      - "8090:8080"  # Disponible en http://localhost:8090
+      - "8090:8080"  
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
