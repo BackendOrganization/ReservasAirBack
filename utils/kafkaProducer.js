@@ -33,30 +33,40 @@ class KafkaProducerService {
     }
   }
 
-  // Métodos específicos para Payment Events
-  async sendPaymentEvent(eventType, paymentData) {
-    return this.sendMessage('payment-events', {
-      eventType,
-      paymentData,
-      timestamp: new Date().toISOString(),
-      metadata: {
-        source: 'reservas-air-back',
-        correlationId: `payment-${paymentData.reservationId}-${Date.now()}`
+  // Publicar evento de reserva creada
+  async sendReservationCreatedEvent(reservationData) {
+    // Validar campos obligatorios
+    const requiredFields = ['reservationId','userId','flightId','amount','currency','reservedAt'];
+    for (const field of requiredFields) {
+      if (!(field in reservationData)) {
+        throw new Error(`Missing required field: ${field}`);
       }
-    }, `payment-${paymentData.reservationId}`);
-  }
-
-  // Métodos específicos para Reservation Events
-  async sendReservationEvent(eventType, reservationData) {
-    return this.sendMessage('reservation-events', {
-      eventType,
-      reservationData,
-      timestamp: new Date().toISOString(),
-      metadata: {
-        source: 'reservas-air-back',
-        correlationId: `reservation-${reservationData.reservationId || 'new'}-${Date.now()}`
-      }
-    }, `reservation-${reservationData.reservationId || reservationData.externalUserId}`);
+    }
+    // Generar metadatos
+    const now = new Date().toISOString();
+    const messageId = `msg-${Date.now()}`;
+    const correlationId = `corr-${Date.now()}`;
+    const idempotencyKey = `reservation-${reservationData.reservationId}-${Date.now()}`;
+    // Construir el mensaje con payload serializado
+    const message = {
+      messageId,
+      eventType: 'reservations.reservation.created',
+      schemaVersion: '1.0',
+      occurredAt: now,
+      producer: 'reservations-service',
+      correlationId,
+      idempotencyKey,
+      payload: JSON.stringify({
+        reservationId: String(reservationData.reservationId),
+        userId: String(reservationData.userId),
+        flightId: String(reservationData.flightId),
+        amount: Number(reservationData.amount),
+        currency: reservationData.currency,
+        reservedAt: reservationData.reservedAt
+      })
+    };
+    // Publicar en el topic correcto
+    return this.sendMessage('reservations.events', message, reservationData.reservationId);
   }
 
   async disconnect() {

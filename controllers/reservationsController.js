@@ -40,7 +40,7 @@ exports.createReservation = async (req, res) => {
         return res.status(400).json({ error: 'Missing required fields: externalUserId (URL), externalFlightId (URL), seatIds (array)' }); // 400
     }
     
-    reservationsModel.createReservation(externalUserId, externalFlightId, seatIds, async (err, result) => {
+    reservationsModel.createReservation(externalUserId, externalFlightId, seatIds, 'ARS', async (err, result) => {
         if (err) {
             console.error(err);
             
@@ -63,13 +63,13 @@ exports.createReservation = async (req, res) => {
         
         // 📨 Enviar evento de reserva creada exitosamente a Kafka
         try {
-            await kafkaProducer.sendReservationEvent('RESERVATION_CREATED', {
-                reservationId: result.reservationId,
-                externalUserId,
-                externalFlightId,
-                seatIds,
-                status: 'PENDING_PAYMENT',
-                totalAmount: result.totalAmount || 0
+            await kafkaProducer.sendReservationCreatedEvent({
+                reservationId: String(result.reservationId),
+                userId: String(externalUserId),
+                flightId: String(externalFlightId),
+                amount: Number(result.totalAmount || result.totalPrice || 0),
+                currency: 'ARS',
+                reservedAt: new Date().toISOString()
             });
             console.log(`📨 Reservation created event sent to Kafka for reservation ${result.reservationId}`);
         } catch (kafkaError) {
