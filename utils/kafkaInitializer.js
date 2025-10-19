@@ -1,30 +1,35 @@
-// Adaptación: inicialización directa del consumidor KafkaJS externo
+
 const { Kafka } = require('kafkajs');
 
-const kafka = new Kafka({
+const kafkaConfig = {
   clientId: 'reservas-air-back',
   brokers: ['34.172.179.60:9094'],
-});
+};
 
-async function initializeKafka({ topic = 'flights.events', groupId = 'reservas-air-back-group' } = {}) {
-  const consumer = kafka.consumer({ groupId });
-  try {
-    await consumer.connect();
-    await consumer.subscribe({ topic, fromBeginning: true });
-    await consumer.run({
-      eachMessage: async ({ topic, partition, message }) => {
-        const key = message.key?.toString() || '';
-        const value = message.value?.toString() || '';
-        console.log(`[${topic}] ${key} -> ${value}`);
-        // Aquí puedes agregar lógica para procesar el evento recibido
-      },
-    });
-    console.log(`✅ Kafka Consumer initialized and listening for topic: ${topic}`);
-    return consumer;
-  } catch (error) {
-    console.error('❌ Failed to initialize Kafka Consumer:', error);
-    return null;
+let kafkaInstance = null;
+function getKafka() {
+  if (!kafkaInstance) {
+    kafkaInstance = new Kafka(kafkaConfig);
   }
+  return kafkaInstance;
 }
 
-module.exports = { initializeKafka };
+async function createConsumer({ groupId = 'reservas-air-back-group' } = {}) {
+  const kafka = getKafka();
+  const consumer = kafka.consumer({ groupId });
+  await consumer.connect();
+  return consumer;
+}
+
+async function createProducer() {
+  const kafka = getKafka();
+  const producer = kafka.producer();
+  await producer.connect();
+  return producer;
+}
+
+module.exports = {
+  createConsumer,
+  createProducer,
+  getKafka,
+};

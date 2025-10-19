@@ -1,3 +1,4 @@
+
 const flightsModel = require('../models/flightsModel');
 
 exports.ingestFlight = (req, res) => {
@@ -90,5 +91,19 @@ exports.updateFlightToDelayed = (req, res) => {
         }
 
         res.status(200).json(result);
+    });
+};
+
+// Actualiza cualquier campo del vuelo (status, horarios, etc)
+exports.updateFlightFields = (req, res) => {
+    const flightData = req.body;
+    if (!flightData || !flightData.flightId) {
+        return res.status(400).json({ error: 'Missing required flightId' });
+    }
+    flightsModel.updateFlightFields(flightData, (err, result) => {
+        if (err) {
+            return res.status(500).json({ error: 'Error updating flight', details: err });
+        }
+        res.status(200).json({ message: 'Flight updated successfully', result });
     });
 };
