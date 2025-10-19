@@ -109,7 +109,7 @@ const getReservationsByExternalUserId = (externalUserId, callback) => {
 
 
 
-const createReservation = (externalUserId, externalFlightId, seatIds, callback) => {
+const createReservation = (externalUserId, externalFlightId, seatIds, currency, callback) => {
     if (!externalFlightId) {
         return callback({ success: false, message: 'externalFlightId is required.' });
     }
@@ -161,8 +161,8 @@ const createReservation = (externalUserId, externalFlightId, seatIds, callback) 
             const seatIdJson = JSON.stringify(seatIds);
             
             // Crear la reserva
-            const insertQuery = `INSERT INTO reservations (externalUserId, externalFlightId, seatId, status, totalPrice) VALUES (?, ?, ?, ?, ?)`;
-            db.query(insertQuery, [externalUserId, externalFlightId, seatIdJson, status, totalPrice], (err3, result) => {
+            const insertQuery = `INSERT INTO reservations (externalUserId, externalFlightId, seatId, status, totalPrice, currency) VALUES (?, ?, ?, ?, ?, ?)`;
+            db.query(insertQuery, [externalUserId, externalFlightId, seatIdJson, status, totalPrice, 'ARS'], (err3, result) => {
                 if (err3) return callback(err3);
 
                 reservationId = result.insertId;
@@ -206,7 +206,8 @@ const createReservation = (externalUserId, externalFlightId, seatIds, callback) 
                                         message: 'All seats reserved successfully.', 
                                         reservationId, 
                                         totalPrice,
-                                        seatsReserved: seatsCount
+                                        seatsReserved: seatsCount,
+                                        currency: 'ARS'
                                     });
                                 });
                             });
