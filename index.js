@@ -4,8 +4,6 @@ const PORT = process.env.PORT || 8080;
 const dotenv = require('dotenv').config();
 const cors = require('cors');
 
-// Importar inicializador de Kafka
-const { initializeKafka } = require('./utils/kafkaInitializer');
 
 app.use(cors({ origin: true }));
 app.use(express.json());
@@ -37,12 +35,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 app.listen(PORT, async () => {
   console.log(`Server running at http://localhost:${PORT}`);
   console.log(`📚 API Documentation available at http://localhost:${PORT}/api-docs`);
-  
-  // Inicializar Kafka después de que el servidor esté listo
-  setTimeout(async () => {
-    await initializeKafka({
-        topics: ['payment-events', 'reservation-events', 'flight-events'],
-        delayMs: 2000
-    });
-  }, 10000); // Esperar 10 segundos para que Kafka esté completamente listo
+
+  // Ejecutar el consumer de kafkaConsumer.js al iniciar el servidor
+  require('./utils/kafkaConsumer');
 });
