@@ -1,18 +1,14 @@
-const kafka = require('./kafka'); // Cambiar ruta aquí también
+const { createProducer } = require('./kafkaInitializer');
 
 class KafkaProducerService {
   constructor() {
-    this.producer = kafka.producer({
-      maxInFlightRequests: 1,
-      idempotent: true,
-      transactionTimeout: 30000
-    });
+    this.producer = null;
     this.isConnected = false;
   }
 
   async connect() {
     if (!this.isConnected) {
-      await this.producer.connect();
+      this.producer = await createProducer();
       this.isConnected = true;
       console.log('✅ Kafka Producer connected');
     }
@@ -21,7 +17,6 @@ class KafkaProducerService {
   async sendMessage(topic, message, key = null) {
     try {
       await this.connect();
-      
       const result = await this.producer.send({
         topic,
         messages: [{
@@ -30,7 +25,6 @@ class KafkaProducerService {
           timestamp: Date.now().toString()
         }]
       });
-      
       console.log(`📤 Message sent to ${topic}:`, result);
       return result;
     } catch (error) {
@@ -66,7 +60,7 @@ class KafkaProducerService {
   }
 
   async disconnect() {
-    if (this.isConnected) {
+    if (this.isConnected && this.producer) {
       await this.producer.disconnect();
       this.isConnected = false;
       console.log('✅ Kafka Producer disconnected');

@@ -1,7 +1,9 @@
 const { createConsumer } = require('./kafkaInitializer');
 
 const topics = [
-  'flights.events'
+  'flights.events',
+  'payments.events',
+  'search.events'
 ];
 
 async function runKafkaConsumer() {
@@ -144,6 +146,26 @@ async function runKafkaConsumer() {
               break;
             case 'core.ingress':
               console.log('🧩 Evento de core.ingress recibido:', event);
+              case 'search.events': {
+                const flightCartsController = require('../controllers/flightCartsController');
+                switch (event.event_type) {
+                  case 'search.cart.item.added': {
+                    // Mapeo: userId -> externalUserId, flightId -> flights
+                    const { userId, flightId, addedAt } = event.payload;
+                    const req = { body: { externalUserId: userId, flights: flightId } };
+                    const res = {
+                      status: (code) => ({ json: (obj) => console.log(`[Cart][${code}]`, obj) }),
+                      json: (obj) => console.log('[Cart][json]', obj),
+                    };
+                    console.log('🛒 Agregando vuelo al carrito:', { userId, flightId, addedAt });
+                    flightCartsController.addFlightToCart(req, res);
+                    break;
+                  }
+                  default:
+                    console.log('Evento de búsqueda no soportado:', event.event_type);
+                }
+                break;
+              }
               break;
             default:
               console.log('Evento de topic no soportado:', topic);
