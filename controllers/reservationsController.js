@@ -64,12 +64,10 @@ exports.createReservation = async (req, res) => {
         // 📨 Enviar evento de reserva creada exitosamente a Kafka
         try {
             await kafkaProducer.sendReservationEvent('reservations.reservation.created', {
-                reservationId: result.reservationId,
-                externalUserId,
-                externalFlightId,
-                seatIds,
-                status: 'PENDING',
-                totalAmount: result.totalAmount || 0,
+                reservationId: String(result.reservationId),
+                userId: String(externalUserId),
+                flightId: String(externalFlightId),
+                amount: Number(result.totalAmount || result.totalPrice || 0),
                 currency: 'ARS',
                 reservedAt: new Date().toISOString()
             });
