@@ -240,9 +240,9 @@ const cancelReservation = (reservationId, callback) => {
         }
         const seatsCount = seatIds.length;
 
-        // Actualizar estado de la reserva
-        const cancelQuery = `UPDATE reservations SET status = 'PENDING' WHERE reservationId = ?`;
-        db.query(cancelQuery, [reservationId], (err2) => {
+    // Actualizar estado de la reserva
+    const cancelQuery = `UPDATE reservations SET status = 'PENDING_REFUND' WHERE reservationId = ?`;
+    db.query(cancelQuery, [reservationId], (err2) => {
             if (err2) return callback(err2);
 
             // Crear evento PENDING_REFUND

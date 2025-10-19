@@ -63,7 +63,7 @@ exports.createReservation = async (req, res) => {
         
         // 📨 Enviar evento de reserva creada exitosamente a Kafka
         try {
-            await kafkaProducer.sendReservationEvent('reservations.reservation.created', {
+            await kafkaProducer.sendReservationCreatedEvent({
                 reservationId: String(result.reservationId),
                 userId: String(externalUserId),
                 flightId: String(externalFlightId),

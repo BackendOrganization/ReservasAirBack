@@ -42,20 +42,30 @@ class KafkaProducerService {
         throw new Error(`Missing required field: ${field}`);
       }
     }
-    // Construir el mensaje
+    // Generar metadatos
+    const now = new Date().toISOString();
+    const messageId = `msg-${Date.now()}`;
+    const correlationId = `corr-${Date.now()}`;
+    const idempotencyKey = `reservation-${reservationData.reservationId}-${Date.now()}`;
+    // Construir el mensaje con payload serializado
     const message = {
-      event_type: 'reservations.reservation.created',
-      payload: {
-        reservationId: reservationData.reservationId,
-        userId: reservationData.userId,
-        flightId: reservationData.flightId,
-        amount: reservationData.amount,
+      messageId,
+      eventType: 'reservations.reservation.created',
+      schemaVersion: '1.0',
+      occurredAt: now,
+      producer: 'reservations-service',
+      correlationId,
+      idempotencyKey,
+      payload: JSON.stringify({
+        reservationId: String(reservationData.reservationId),
+        userId: String(reservationData.userId),
+        flightId: String(reservationData.flightId),
+        amount: Number(reservationData.amount),
         currency: reservationData.currency,
         reservedAt: reservationData.reservedAt
-      },
-      schema_version: '1.0'
+      })
     };
-    // Publicar en el topic
+    // Publicar en el topic correcto
     return this.sendMessage('reservations.events', message, reservationData.reservationId);
   }
 
