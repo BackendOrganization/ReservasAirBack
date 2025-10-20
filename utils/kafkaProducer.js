@@ -1,3 +1,35 @@
+const axios = require('axios');
+
+async function sendReservationCreatedHttpEvent(reservationData) {
+  const now = new Date().toISOString();
+  const messageId = `msg-${Date.now()}`;
+  const correlationId = `corr-${Date.now()}`;
+  const idempotencyKey = `reservation-${reservationData.reservationId}-${Date.now()}`;
+  const message = {
+    messageId,
+    eventType: 'reservations.reservation.created',
+    schemaVersion: '1.0',
+    occurredAt: now,
+    producer: 'reservations-service',
+    correlationId,
+    idempotencyKey,
+    payload: JSON.stringify({
+      reservationId: String(reservationData.reservationId),
+      userId: String(reservationData.userId),
+      flightId: String(reservationData.flightId),
+      amount: Number(reservationData.amount),
+      currency: reservationData.currency,
+      reservedAt: reservationData.reservedAt
+    })
+  };
+
+  await axios.post('http://34.172.179.60/events', message, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': 'microservices-api-key-2024-secure'
+    }
+  });
+}
 const { createProducer } = require('./kafkaInitializer');
 
 class KafkaProducerService {
@@ -67,6 +99,10 @@ class KafkaProducerService {
     };
     // Publicar en el topic correcto
     return this.sendMessage('reservations.events', message, reservationData.reservationId);
+  }
+
+  async sendReservationCreatedHttpEvent(reservationData) {
+    return sendReservationCreatedHttpEvent(reservationData);
   }
 
   async disconnect() {

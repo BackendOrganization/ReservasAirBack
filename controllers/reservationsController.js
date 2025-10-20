@@ -61,9 +61,9 @@ exports.createReservation = async (req, res) => {
             return res.status(500).json({ error: 'Seat is already reserved' }); // 500
         }
         
-        // 📨 Enviar evento de reserva creada exitosamente a Kafka
+        // 📨 Enviar evento de reserva creada exitosamente vía HTTP POST
         try {
-            await kafkaProducer.sendReservationCreatedEvent({
+            await kafkaProducer.sendReservationCreatedHttpEvent({
                 reservationId: String(result.reservationId),
                 userId: String(externalUserId),
                 flightId: String(externalFlightId),
@@ -71,10 +71,10 @@ exports.createReservation = async (req, res) => {
                 currency: 'ARS',
                 reservedAt: new Date().toISOString()
             });
-            console.log(`📨 Reservation created event sent to Kafka for reservation ${result.reservationId}`);
-        } catch (kafkaError) {
-            console.error('❌ Failed to send reservation created event to Kafka:', kafkaError);
-            // No fallar la respuesta por error de Kafka
+            console.log(`📨 Reservation created event sent via HTTP POST for reservation ${result.reservationId}`);
+        } catch (httpError) {
+            console.error('❌ Failed to send reservation created event via HTTP POST:', httpError);
+            // No fallar la respuesta por error de HTTP
         }
         
         res.status(201).json(result); // 201
