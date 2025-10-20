@@ -10,7 +10,8 @@ const consumer = kafka.consumer({ groupId: 'check-' + Date.now() });
 async function run() {
   await consumer.connect();
   await consumer.subscribe({ topic: 'reservations.events', fromBeginning: true });
-  console.log('📡 Leyendo mensajes del topic reservations.events...\n');
+  await consumer.subscribe({ topic: 'search.events', fromBeginning: true });
+  console.log('📡 Leyendo mensajes de los topics reservations.events y search.events...\n');
 
   await consumer.run({
     eachMessage: async ({ topic, message }) => {
