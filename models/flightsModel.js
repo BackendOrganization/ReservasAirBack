@@ -95,12 +95,12 @@ const insertFlight = (flightData, callback) => {
         });
     }
 
-    // Verificar que aircraftModel no esté duplicado
+    // Verificar que aircraftModel (flightId del evento) no esté duplicado
     const checkSql = 'SELECT COUNT(*) AS count FROM flights WHERE aircraftModel = ?';
-    db.query(checkSql, [flightData.flightNumber], (err, results) => {
+    db.query(checkSql, [flightData.aircraftModel], (err, results) => {
         if (err) return callback(err);
         if (results[0].count > 0) {
-            return callback({ message: 'Ya existe un vuelo con ese aircraftModel (flightNumber)' });
+            return callback({ message: 'Ya existe un vuelo con ese aircraftModel (flightId)' });
         }
 
         // ✅ Calcular asientos totales según el tipo de aeronave
@@ -124,7 +124,7 @@ const insertFlight = (flightData, callback) => {
             sql,
             [
                 flightData.aircraft,
-                flightData.flightNumber, // Guardar flightNumber en aircraftModel
+                flightData.aircraftModel, // Guardar flightId del evento en aircraftModel
                 JSON.stringify(flightData.origin),
                 JSON.stringify(flightData.destination),
                 flightData.flightDate,
@@ -151,13 +151,12 @@ const insertFlight = (flightData, callback) => {
                         return;
                     }
 
-                    // ✅ Actualizar freeSeats con los asientos realmente creados
-                    const updateSql = 'UPDATE flights SET freeSeats = ? WHERE id = ?';
-                    db.query(updateSql, [seatsResult.seatsCreated, flightId], (updateErr) => {
+                    // ✅ Actualizar freeSeats con los asientos realmente creados usando aircraftModel
+                    const updateSql = 'UPDATE flights SET freeSeats = ? WHERE aircraftModel = ?';
+                    db.query(updateSql, [seatsResult.seatsCreated, flightData.aircraftModel], (updateErr) => {
                         if (updateErr) {
                             console.error('Error updating freeSeats:', updateErr);
                         }
-
                         // Retornar resultado exitoso con info completa
                         callback(null, {
                             flightId,
@@ -232,18 +231,16 @@ const getAllFlights = (callback) => {
 
 // ✅ NUEVO: Cambiar estado del vuelo a DELAYED
 const updateFlightToDelayed = (externalFlightId, callback) => {
-    const sql = 'UPDATE flights SET flightStatus = ? WHERE externalFlightId = ?';
+    const sql = 'UPDATE flights SET flightStatus = ? WHERE aircraftModel = ?';
     db.query(sql, ['DELAYED', externalFlightId], (err, result) => {
         if (err) return callback(err);
-        
         if (result.affectedRows === 0) {
             return callback({ message: 'Flight not found' });
         }
-        
         callback(null, {
             success: true,
             message: 'Flight status updated to DELAYED',
-            flightId: externalFlightId,
+            aircraftModel: externalFlightId,
             flightStatus: 'DELAYED',
             affectedRows: result.affectedRows
         });
@@ -253,9 +250,10 @@ const updateFlightToDelayed = (externalFlightId, callback) => {
 // Actualiza cualquier campo del vuelo según el body recibido (flexible para eventos)
 // flightData debe incluir flightId y los campos a actualizar
 const updateFlightFields = (flightData, callback) => {
-    const { flightId, ...fieldsToUpdate } = flightData;
-    if (!flightId || Object.keys(fieldsToUpdate).length === 0) {
-        return callback(new Error('flightId y al menos un campo a actualizar son requeridos'));
+    // Usar aircraftModel como identificador principal
+    const { aircraftModel, ...fieldsToUpdate } = flightData;
+    if (!aircraftModel || Object.keys(fieldsToUpdate).length === 0) {
+        return callback(new Error('aircraftModel y al menos un campo a actualizar son requeridos'));
     }
     // Mapear nombres del schema a columnas reales si es necesario
     const fieldMap = {
@@ -269,7 +267,7 @@ const updateFlightFields = (flightData, callback) => {
         let needOrigin = fieldsToUpdate.newDepartureAt !== undefined;
         let needDestination = fieldsToUpdate.newArrivalAt !== undefined;
         if (!needOrigin && !needDestination) return cb();
-            db.query('SELECT origin, destination, flightDate FROM flights WHERE externalFlightId = ?', [flightId], (err, rows) => {
+        db.query('SELECT origin, destination, flightDate FROM flights WHERE aircraftModel = ?', [aircraftModel], (err, rows) => {
             if (err) return callback(err);
             if (!rows.length) return callback(new Error('Vuelo no encontrado para actualizar horarios'));
             let origin = rows[0].origin;
@@ -280,46 +278,46 @@ const updateFlightFields = (flightData, callback) => {
             if (typeof destination === 'string') {
                 try { destination = JSON.parse(destination); } catch (e) { destination = {}; }
             }
-                // Procesar newDepartureAt
-                if (needOrigin) {
-                    const depDate = new Date(fieldsToUpdate.newDepartureAt);
-                    if (!isNaN(depDate)) {
-                        // Actualizar flightDate (columna) con la fecha (YYYY-MM-DD)
-                        const yyyy = depDate.getUTCFullYear();
-                        const mm = String(depDate.getUTCMonth() + 1).padStart(2, '0');
-                        const dd = String(depDate.getUTCDate()).padStart(2, '0');
-                        setClauses.push('flightDate = ?');
-                        values.push(`${yyyy}-${mm}-${dd}`);
-                        // Actualizar origin.time con la hora (HH:mm)
-                        const hh = String(depDate.getUTCHours()).padStart(2, '0');
-                        const min = String(depDate.getUTCMinutes()).padStart(2, '0');
-                        origin.time = `${hh}:${min}`;
-                        setClauses.push('origin = ?');
-                        values.push(JSON.stringify(origin));
-                    }
+            // Procesar newDepartureAt
+            if (needOrigin) {
+                const depDate = new Date(fieldsToUpdate.newDepartureAt);
+                if (!isNaN(depDate)) {
+                    // Actualizar flightDate (columna) con la fecha (YYYY-MM-DD)
+                    const yyyy = depDate.getUTCFullYear();
+                    const mm = String(depDate.getUTCMonth() + 1).padStart(2, '0');
+                    const dd = String(depDate.getUTCDate()).padStart(2, '0');
+                    setClauses.push('flightDate = ?');
+                    values.push(`${yyyy}-${mm}-${dd}`);
+                    // Actualizar origin.time con la hora (HH:mm)
+                    const hh = String(depDate.getUTCHours()).padStart(2, '0');
+                    const min = String(depDate.getUTCMinutes()).padStart(2, '0');
+                    origin.time = `${hh}:${min}`;
+                    setClauses.push('origin = ?');
+                    values.push(JSON.stringify(origin));
                 }
-                // Procesar newArrivalAt
-                if (needDestination) {
-                    const arrDate = new Date(fieldsToUpdate.newArrivalAt);
-                    if (!isNaN(arrDate)) {
-                        // Actualizar flightDate (columna) con la fecha de llegada (YYYY-MM-DD)
-                        const yyyy = arrDate.getUTCFullYear();
-                        const mm = String(arrDate.getUTCMonth() + 1).padStart(2, '0');
-                        const dd = String(arrDate.getUTCDate()).padStart(2, '0');
-                        setClauses.push('flightDate = ?');
-                        values.push(`${yyyy}-${mm}-${dd}`);
-                        // Actualizar destination.time con la hora (HH:mm)
-                        const hh = String(arrDate.getUTCHours()).padStart(2, '0');
-                        const min = String(arrDate.getUTCMinutes()).padStart(2, '0');
-                        destination.time = `${hh}:${min}`;
-                        setClauses.push('destination = ?');
-                        values.push(JSON.stringify(destination));
-                    }
+            }
+            // Procesar newArrivalAt
+            if (needDestination) {
+                const arrDate = new Date(fieldsToUpdate.newArrivalAt);
+                if (!isNaN(arrDate)) {
+                    // Actualizar flightDate (columna) con la fecha de llegada (YYYY-MM-DD)
+                    const yyyy = arrDate.getUTCFullYear();
+                    const mm = String(arrDate.getUTCMonth() + 1).padStart(2, '0');
+                    const dd = String(arrDate.getUTCDate()).padStart(2, '0');
+                    setClauses.push('flightDate = ?');
+                    values.push(`${yyyy}-${mm}-${dd}`);
+                    // Actualizar destination.time con la hora (HH:mm)
+                    const hh = String(arrDate.getUTCHours()).padStart(2, '0');
+                    const min = String(arrDate.getUTCMinutes()).padStart(2, '0');
+                    destination.time = `${hh}:${min}`;
+                    setClauses.push('destination = ?');
+                    values.push(JSON.stringify(destination));
                 }
-                // Eliminar estos campos del update plano
-                delete fieldsToUpdate.newDepartureAt;
-                delete fieldsToUpdate.newArrivalAt;
-                cb();
+            }
+            // Eliminar estos campos del update plano
+            delete fieldsToUpdate.newDepartureAt;
+            delete fieldsToUpdate.newArrivalAt;
+            cb();
         });
     };
 
@@ -331,8 +329,8 @@ const updateFlightFields = (flightData, callback) => {
             values.push(value);
         }
         if (setClauses.length === 0) return callback(null, { message: 'No hay campos para actualizar' });
-        const sql = `UPDATE flights SET ${setClauses.join(', ')} WHERE externalFlightId = ?`;
-        values.push(flightId);
+        const sql = `UPDATE flights SET ${setClauses.join(', ')} WHERE aircraftModel = ?`;
+        values.push(aircraftModel);
         db.query(sql, values, (err, result) => {
             if (err) return callback(err);
             callback(null, result);

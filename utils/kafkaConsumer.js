@@ -1,20 +1,15 @@
 const { createConsumer } = require('./kafkaInitializer');
 
-const topics = [
-  'reservations.events',
-];
+const topics = ['reservations.events'];
 
 async function runKafkaConsumer() {
-  // Cambiá groupId cada vez que quieras “releer todo” desde cero
   const consumer = await createConsumer({ groupId: 'reservas-air-back-replay-' + Date.now() });
 
-  // Suscribirse a todos los topics desde el principio
   for (const topic of topics) {
     await consumer.subscribe({ topic, fromBeginning: true });
     console.log(`📡 Subscribed to topic: ${topic}`);
   }
 
-  // Log al unirse al grupo
   consumer.on(consumer.events.GROUP_JOIN, e => {
     console.log(`👥 Joined group ${e.payload.groupId} as ${e.payload.memberId}`);
   });
@@ -31,34 +26,35 @@ async function runKafkaConsumer() {
         const events = Array.isArray(parsed) ? parsed : [parsed];
 
         for (const event of events) {
-          // Soportar event_type y eventType
           const type = event.event_type || event.eventType;
+
+          // ==============================================================
+          // 🛫 EVENTO: FLIGHT CREATED
+          // ==============================================================
           if (type === 'flights.flight.created') {
             const flightsController = require('../controllers/flightsController');
             let payload = event.payload;
+
             if (typeof payload === 'string') {
               try {
                 payload = JSON.parse(payload);
               } catch (e) {
                 console.error('Error parsing payload:', e, payload);
+                continue;
               }
             }
+
             const parseLocation = (input, time) => {
-              let code = '';
-              if (typeof input === 'object' && input !== null) {
-                code = input.code || input.city || input;
-              } else {
-                code = input;
-              }
+              let code = typeof input === 'object' && input ? (input.code || input.city || input) : input;
               return {
                 city: code === 'EZE' ? 'Buenos Aires' : 'Generic City',
-                code: code,
+                code,
                 time: time || undefined
               };
             };
+
             let duration = null;
-            let originTime = undefined;
-            let destinationTime = undefined;
+            let originTime, destinationTime;
             try {
               const dep = new Date(payload.departureAt);
               const arr = new Date(payload.arrivalAt);
@@ -70,29 +66,38 @@ async function runKafkaConsumer() {
                 originTime = `${dep.getUTCHours().toString().padStart(2, '0')}`;
                 destinationTime = `${arr.getUTCHours().toString().padStart(2, '0')}`;
               }
-            } catch (e) {
+            } catch {
               duration = null;
             }
-            let aircraftModel = payload.aircraftModel;
-            if (aircraftModel === 'A320') aircraftModel = 'E190';
+
+            // ✅ Guarda flightId en aircraftModel literalmente
             const flightData = {
               flightNumber: payload.flightNumber,
               origin: parseLocation(payload.origin, originTime),
               destination: parseLocation(payload.destination, destinationTime),
-              aircraft: aircraftModel,
-              aircraftModel: payload.flightId, // flightId goes into aircraftModel
+              aircraft: payload.aircraftModel || 'UNKNOWN', // modelo real del avión
+              aircraftModel: String(payload.flightId),      // 🔥 guarda el flightId (ej: "56")
               flightDate: payload.departureAt.split('T')[0],
               duration,
             };
+
             const req = { body: flightData };
             const res = {
               status: (code) => ({ json: (obj) => console.log(`[IngestFlight][${code}]`, obj) }),
               json: (obj) => console.log('[IngestFlight][json]', obj),
             };
+
             console.log('🛬 Procesando vuelo creado:', flightData);
             await flightsController.ingestFlight(req, res);
-          } else if (type === 'flights.flight.updated') {
+          }
+
+          // ==============================================================
+          // 🛠️ EVENTO: FLIGHT UPDATED
+          // ==============================================================
+          else if (type === 'flights.flight.updated') {
+            const flightsController = require('../controllers/flightsController');
             let payload = event.payload;
+
             if (typeof payload === 'string') {
               try {
                 payload = JSON.parse(payload);
@@ -101,8 +106,9 @@ async function runKafkaConsumer() {
                 payload = {};
               }
             }
+
             console.log('✈️ Actualizar vuelo:', payload);
-            const flightsController = require('../controllers/flightsController');
+
             const statusMap = {
               'EN_HORA': 'ONTIME',
               'ONTIME': 'ONTIME',
@@ -111,24 +117,28 @@ async function runKafkaConsumer() {
               'CANCELLED': 'CANCELLED',
               'CANCELADO': 'CANCELLED'
             };
+
             let mappedPayload = { ...payload };
-            if (mappedPayload.newStatus && statusMap[mappedPayload.newStatus.toUpperCase()]) {
-              mappedPayload.newStatus = statusMap[mappedPayload.newStatus.toUpperCase()];
-            }
-            if (mappedPayload.status && statusMap[mappedPayload.status.toUpperCase()]) {
-              mappedPayload.status = statusMap[mappedPayload.status.toUpperCase()];
-            }
+            const normalizeStatus = (s) => (s && statusMap[s.toUpperCase()]) || s;
+            mappedPayload.newStatus = normalizeStatus(mappedPayload.newStatus);
+            mappedPayload.status = normalizeStatus(mappedPayload.status);
+
+            // Si el vuelo fue cancelado
             if (
-              (mappedPayload.newStatus && mappedPayload.newStatus.toUpperCase() === 'CANCELLED') ||
-              (mappedPayload.status && mappedPayload.status.toUpperCase() === 'CANCELLED')
+              (mappedPayload.newStatus && mappedPayload.newStatus === 'CANCELLED') ||
+              (mappedPayload.status && mappedPayload.status === 'CANCELLED')
             ) {
-              const cancelReq = { params: { externalFlightId: mappedPayload.flightId } };
+              const cancelReq = { params: { aircraftModel: String(mappedPayload.flightId) } };
               const cancelRes = {
                 status: (code) => ({ json: (obj) => console.log(`[CancelFlight][${code}]`, obj) }),
                 json: (obj) => console.log('[CancelFlight][json]', obj),
               };
               flightsController.cancelFlightReservations(cancelReq, cancelRes);
             } else {
+              // flightId del evento SIEMPRE se guarda como aircraftModel
+              if (mappedPayload.flightId) {
+                mappedPayload.aircraftModel = String(mappedPayload.flightId);
+              }
               const updateReq = { body: mappedPayload };
               const updateRes = {
                 status: (code) => ({ json: (obj) => console.log(`[UpdateFlight][${code}]`, obj) }),
@@ -136,7 +146,12 @@ async function runKafkaConsumer() {
               };
               flightsController.updateFlightFields(updateReq, updateRes);
             }
-          } else if (type === 'search.cart.item.added') {
+          }
+
+          // ==============================================================
+          // 🛒 EVENTO: CART ITEM ADDED
+          // ==============================================================
+          else if (type === 'search.cart.item.added') {
             const flightCartsController = require('../controllers/flightCartsController');
             let payload = event.payload;
             if (typeof payload === 'string') {
@@ -147,6 +162,7 @@ async function runKafkaConsumer() {
                 payload = {};
               }
             }
+
             const { userId, flightId, addedAt } = payload;
             const req = { body: { externalUserId: userId, flights: flightId } };
             const res = {
@@ -155,17 +171,47 @@ async function runKafkaConsumer() {
             };
             console.log('🛒 Agregando vuelo al carrito:', { userId, flightId, addedAt });
             flightCartsController.addFlightToCart(req, res);
-          } else if (type === 'reservations.reservation.created') {
+          }
+
+          // ==============================================================
+          // 📅 EVENTO: RESERVATION CREATED
+          // ==============================================================
+          else if (type === 'reservations.reservation.created') {
             console.log('📅 Evento de reserva recibido:', event);
-          } else if (type === 'payments.payment.created') {
+          }
+
+          // ==============================================================
+          // 💰 EVENTO: PAYMENT CREATED
+          // ==============================================================
+          else if (type === 'payments.payment.created') {
             console.log('💰 Evento de pago recibido:', event);
-          } else if (type === 'users.user.created') {
+          }
+
+          // ==============================================================
+          // 👤 EVENTO: USER CREATED
+          // ==============================================================
+          else if (type === 'users.user.created') {
             console.log('👤 Evento de usuario recibido:', event);
-          } else if (type === 'metrics.metric.created') {
+          }
+
+          // ==============================================================
+          // 📈 EVENTO: METRIC CREATED
+          // ==============================================================
+          else if (type === 'metrics.metric.created') {
             console.log('📈 Evento de métricas recibido:', event);
-          } else if (type === 'core.ingress') {
+          }
+
+          // ==============================================================
+          // 🧩 CORE INGRESO
+          // ==============================================================
+          else if (type === 'core.ingress') {
             console.log('🧩 Evento de core.ingress recibido:', event);
-          } else {
+          }
+
+          // ==============================================================
+          // 🚫 EVENTO NO RECONOCIDO
+          // ==============================================================
+          else {
             console.log('Evento no soportado:', type);
           }
         }
