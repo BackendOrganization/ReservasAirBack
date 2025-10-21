@@ -76,24 +76,22 @@ exports.removeFlightFromCart = (req, res) => {
 
 
 exports.getCartByUserId = (req, res) => {
-    const { externalUserId } = req.body;
-    
+    const { externalUserId } = req.params; 
     
     if (!externalUserId) {
-        return res.status(400).json({ 
-            error: 'Missing required field: externalUserId is required' 
-        });
+        return res.status(400).json({ error: 'Missing externalUserId parameter' });
     }
 
     flightCartsModel.getCartByUserId(externalUserId, (err, result) => {
         if (err) {
-            console.error('Error getting cart:', err);
-            return res.status(500).json({ 
-                error: 'Error getting cart',
-                details: err.message 
-            });
+            console.error('Error getting cart with flight details:', err);
+            return res.status(500).json({ error: 'Error fetching cart' });
         }
-        
-        return res.status(200).json(result);
+
+        res.status(200).json({
+            externalUserId,
+            flights: result,
+            totalFlights: result.length
+        });
     });
 };
