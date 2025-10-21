@@ -147,35 +147,17 @@ const removeFlightFromCart = (externalUserId, flightId, callback) => {
 };
 
 const getCartByUserId = (externalUserId, callback) => {
-    const sql = 'SELECT flights FROM flight_carts WHERE externalUserId = ?';
+    // Primero obtenemos el carrito del usuario
+    const getCartSql = 'SELECT flights FROM flight_carts WHERE externalUserId = ?';
     
-    db.query(sql, [externalUserId], (err, results) => {
+    db.query(getCartSql, [externalUserId], (err, cartResults) => {
         if (err) {
             return callback(err);
         }
         
-        if (results.length > 0) {
-            let flights = results[0].flights || [];
-            
-            // Si flights viene como string JSON, lo parseamos
-            if (typeof flights === 'string') {
-                try {
-                    flights = JSON.parse(flights);
-                } catch (parseErr) {
-                    flights = [];
-                }
-            }
-            
-            callback(null, {
-                success: true,
-                message: 'Cart retrieved successfully',
-                externalUserId: externalUserId,
-                flights: flights,
-                flightCount: flights.length
-            });
-        } else {
-            // El usuario no tiene carrito
-            callback(null, {
+        // Si no tiene carrito o está vacío
+        if (cartResults.length === 0 || !cartResults[0].flights) {
+            return callback(null, {
                 success: true,
                 message: `User ${externalUserId} does not have a cart yet`,
                 externalUserId: externalUserId,
@@ -183,6 +165,51 @@ const getCartByUserId = (externalUserId, callback) => {
                 flightCount: 0
             });
         }
+        
+        // Parsear el JSON de flights
+        let flightIds = [];
+        try {
+            flightIds = typeof cartResults[0].flights === 'string' 
+                ? JSON.parse(cartResults[0].flights) 
+                : cartResults[0].flights;
+        } catch (parseErr) {
+            console.error('Error parsing flights JSON:', parseErr);
+            flightIds = [];
+        }
+        
+        // Si el array está vacío
+        if (!Array.isArray(flightIds) || flightIds.length === 0) {
+            return callback(null, {
+                success: true,
+                message: `User ${externalUserId} does not have a cart yet`,
+                externalUserId: externalUserId,
+                flights: [],
+                flightCount: 0
+            });
+        }
+        
+        // Obtener los datos completos de los vuelos
+        const placeholders = flightIds.map(() => '?').join(',');
+        const getFlightsSql = `
+            SELECT * 
+            FROM flights 
+            WHERE externalFlightId IN (${placeholders})
+            AND (flightStatus IS NULL OR flightStatus != 'CANCELLED')
+        `;
+        
+        db.query(getFlightsSql, flightIds, (err2, flightResults) => {
+            if (err2) {
+                return callback(err2);
+            }
+            
+            callback(null, {
+                success: true,
+                message: 'Cart retrieved successfully',
+                externalUserId: externalUserId,
+                flights: flightResults,
+                flightCount: flightResults.length
+            });
+        });
     });
 };
 
