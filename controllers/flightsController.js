@@ -3,7 +3,7 @@ const flightsModel = require('../models/flightsModel');
 
 exports.ingestFlight = (req, res) => {
     const flightData = req.body;
-    if (!flightData || !flightData.id || !flightData.origin || !flightData.destination || !flightData.aircraft) {
+    if (!flightData || !flightData.origin || !flightData.destination || !flightData.aircraft) {
         return res.status(400).json({ error: 'Missing required flight data (id, origin, destination, aircraft)' });
     }
     

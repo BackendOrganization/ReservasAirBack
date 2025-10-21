@@ -88,27 +88,26 @@ const generateSeats = (externalFlightId, aircraft, callback) => {
 };
 
 const insertFlight = (flightData, callback) => {
-    // Verifica si el externalFlightId ya existe
-    const checkSql = 'SELECT COUNT(*) AS count FROM flights WHERE externalFlightId = ?';
-    db.query(checkSql, [flightData.id], (err, results) => {
+    // Verificar si el tipo de aeronave es soportado
+    if (!aircraftConfig[flightData.aircraft]) {
+        return callback({
+            message: `Aircraft type ${flightData.aircraft} not supported. Supported types: ${Object.keys(aircraftConfig).join(', ')}`
+        });
+    }
+
+    // Verificar que aircraftModel no esté duplicado
+    const checkSql = 'SELECT COUNT(*) AS count FROM flights WHERE aircraftModel = ?';
+    db.query(checkSql, [flightData.flightNumber], (err, results) => {
         if (err) return callback(err);
         if (results[0].count > 0) {
-            return callback({ message: 'externalFlightId already exists' });
+            return callback({ message: 'Ya existe un vuelo con ese aircraftModel (flightNumber)' });
         }
 
-        // Verificar si el tipo de aeronave es soportado
-        if (!aircraftConfig[flightData.aircraft]) {
-            return callback({ 
-                message: `Aircraft type ${flightData.aircraft} not supported. Supported types: ${Object.keys(aircraftConfig).join(', ')}` 
-            });
-        }
-
-        // ✅ CALCULAR ASIENTOS LIBRES SEGÚN EL TIPO DE AERONAVE
+        // ✅ Calcular asientos totales según el tipo de aeronave
         const totalSeats = calculateTotalSeats(flightData.aircraft);
 
         const sql = `
             INSERT INTO flights (
-                externalFlightId,
                 aircraft,
                 aircraftModel,
                 origin,
@@ -118,52 +117,53 @@ const insertFlight = (flightData, callback) => {
                 freeSeats,
                 occupiedSeats,
                 flightStatus
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
-        
+
         db.query(
             sql,
             [
-                flightData.id,
                 flightData.aircraft,
                 flightData.flightNumber, // Guardar flightNumber en aircraftModel
                 JSON.stringify(flightData.origin),
                 JSON.stringify(flightData.destination),
                 flightData.flightDate,
                 flightData.duration,
-                totalSeats, // ✅ A330=288, E190=112, B737=180
-                0, // occupiedSeats siempre inicia en 0
-                'ONTIME' // ✅ NUEVO: flightStatus por defecto
+                totalSeats, // total de asientos
+                0, // occupiedSeats inicia en 0
+                'ONTIME' // estado por defecto
             ],
             (err, result) => {
                 if (err) return callback(err);
-                
-                // Después de insertar el vuelo, generar los asientos
-                generateSeats(flightData.id, flightData.aircraft, (seatsErr, seatsResult) => {
+
+                // ✅ Obtener el ID autogenerado por MySQL
+                const flightId = result.insertId;
+
+                // Crear los asientos asociados
+                generateSeats(flightId, flightData.aircraft, (seatsErr, seatsResult) => {
                     if (seatsErr) {
                         console.error('Error creating seats:', seatsErr);
                         // Si falla la creación de asientos, eliminar el vuelo insertado
-                        const deleteSql = 'DELETE FROM flights WHERE externalFlightId = ?';
-                        db.query(deleteSql, [flightData.id], () => {
+                        const deleteSql = 'DELETE FROM flights WHERE id = ?';
+                        db.query(deleteSql, [flightId], () => {
                             callback(seatsErr);
                         });
                         return;
                     }
-                    
-                    // ✅ ACTUALIZAR freeSeats CON LOS ASIENTOS REALMENTE CREADOS
-                    const updateSql = 'UPDATE flights SET freeSeats = ? WHERE externalFlightId = ?';
-                    db.query(updateSql, [seatsResult.seatsCreated, flightData.id], (updateErr) => {
+
+                    // ✅ Actualizar freeSeats con los asientos realmente creados
+                    const updateSql = 'UPDATE flights SET freeSeats = ? WHERE id = ?';
+                    db.query(updateSql, [seatsResult.seatsCreated, flightId], (updateErr) => {
                         if (updateErr) {
                             console.error('Error updating freeSeats:', updateErr);
                         }
-                        
-                        // Retornar resultado exitoso con información de asientos creados
+
+                        // Retornar resultado exitoso con info completa
                         callback(null, {
-                            ...result,
+                            flightId,
                             seatsCreated: seatsResult.seatsCreated,
-                            flightId: flightData.id,
-                            totalSeats: totalSeats,
-                            flightStatus: 'ONTIME' // ✅ NUEVO: Confirmar en respuesta
+                            totalSeats,
+                            flightStatus: 'ONTIME'
                         });
                     });
                 });

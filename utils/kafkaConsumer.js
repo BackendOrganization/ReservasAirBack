@@ -1,9 +1,7 @@
 const { createConsumer } = require('./kafkaInitializer');
 
 const topics = [
-  'flights.events',
-  'payments.events',
-  'search.events'
+  'reservations.events',
 ];
 
 async function runKafkaConsumer() {
@@ -33,142 +31,142 @@ async function runKafkaConsumer() {
         const events = Array.isArray(parsed) ? parsed : [parsed];
 
         for (const event of events) {
-          switch (topic) {
-            case 'flights.events': {
-              const flightsController = require('../controllers/flightsController');
-              switch (event.event_type) {
-                case 'flights.flight.created': {
-                  const payload = event.payload;
-                  const parseLocation = (input, time) => {
-                    let code = '';
-                    if (typeof input === 'object' && input !== null) {
-                      code = input.code || input.city || input;
-                    } else {
-                      code = input;
-                    }
-                    return {
-                      city: code === 'EZE' ? 'Buenos Aires' : 'Generic City',
-                      code: code,
-                      time: time || undefined
-                    };
-                  };
-                  let duration = null;
-                  let originTime = undefined;
-                  let destinationTime = undefined;
-                  try {
-                    const dep = new Date(payload.departureAt);
-                    const arr = new Date(payload.arrivalAt);
-                    if (!isNaN(dep) && !isNaN(arr)) {
-                      const totalMinutes = Math.round((arr - dep) / 60000);
-                      const hours = Math.floor(totalMinutes / 60);
-                      const minutes = totalMinutes % 60;
-                      duration = `${hours}h ${minutes.toString().padStart(2, '0')}m`;
-                      originTime = `${dep.getUTCHours().toString().padStart(2, '0')}`;
-                      destinationTime = `${arr.getUTCHours().toString().padStart(2, '0')}`;
-                    }
-                  } catch (e) {
-                    duration = null;
-                  }
-                  let aircraftModel = payload.aircraftModel;
-                  if (aircraftModel === 'A320') aircraftModel = 'E190';
-                  const flightData = {
-                    id: payload.flightId,
-                    flightNumber: payload.flightNumber,
-                    origin: parseLocation(payload.origin, originTime),
-                    destination: parseLocation(payload.destination, destinationTime),
-                    aircraft: aircraftModel,
-                    aircraftModel: aircraftModel,
-                    flightDate: payload.departureAt.split('T')[0],
-                    duration,
-                  };
-                  const req = { body: flightData };
-                  const res = {
-                    status: (code) => ({ json: (obj) => console.log(`[IngestFlight][${code}]`, obj) }),
-                    json: (obj) => console.log('[IngestFlight][json]', obj),
-                  };
-                  console.log('🛬 Procesando vuelo creado:', flightData);
-                  await flightsController.ingestFlight(req, res);
-                  break;
-                }
-                case 'flights.flight.updated': {
-                  console.log('✈️ Actualizar vuelo:', event.payload);
-                  const statusMap = {
-                    'EN_HORA': 'ONTIME',
-                    'ONTIME': 'ONTIME',
-                    'DELAYED': 'DELAYED',
-                    'DEMORADO': 'DELAYED',
-                    'CANCELLED': 'CANCELLED',
-                    'CANCELADO': 'CANCELLED'
-                  };
-                  let mappedPayload = { ...event.payload };
-                  if (mappedPayload.newStatus && statusMap[mappedPayload.newStatus.toUpperCase()]) {
-                    mappedPayload.newStatus = statusMap[mappedPayload.newStatus.toUpperCase()];
-                  }
-                  if (mappedPayload.status && statusMap[mappedPayload.status.toUpperCase()]) {
-                    mappedPayload.status = statusMap[mappedPayload.status.toUpperCase()];
-                  }
-                  if (
-                    (mappedPayload.newStatus && mappedPayload.newStatus.toUpperCase() === 'CANCELLED') ||
-                    (mappedPayload.status && mappedPayload.status.toUpperCase() === 'CANCELLED')
-                  ) {
-                    const cancelReq = { params: { externalFlightId: mappedPayload.flightId } };
-                    const cancelRes = {
-                      status: (code) => ({ json: (obj) => console.log(`[CancelFlight][${code}]`, obj) }),
-                      json: (obj) => console.log('[CancelFlight][json]', obj),
-                    };
-                    flightsController.cancelFlightReservations(cancelReq, cancelRes);
-                  } else {
-                    const updateReq = { body: mappedPayload };
-                    const updateRes = {
-                      status: (code) => ({ json: (obj) => console.log(`[UpdateFlight][${code}]`, obj) }),
-                      json: (obj) => console.log('[UpdateFlight][json]', obj),
-                    };
-                    flightsController.updateFlightFields(updateReq, updateRes);
-                  }
-                  break;
-                }
-                default:
-                  console.log('Evento de vuelo no soportado:', event.event_type);
+          // Soportar event_type y eventType
+          const type = event.event_type || event.eventType;
+          if (type === 'flights.flight.created') {
+            const flightsController = require('../controllers/flightsController');
+            let payload = event.payload;
+            if (typeof payload === 'string') {
+              try {
+                payload = JSON.parse(payload);
+              } catch (e) {
+                console.error('Error parsing payload:', e, payload);
               }
-              break;
             }
-            case 'reservations.events':
-              console.log('📅 Evento de reserva recibido:', event);
-              break;
-            case 'payments.events':
-              console.log('💰 Evento de pago recibido:', event);
-              break;
-            case 'users.events':
-              console.log('👤 Evento de usuario recibido:', event);
-              break;
-            case 'metrics.events':
-              console.log('📈 Evento de métricas recibido:', event);
-              break;
-            case 'core.ingress':
-              console.log('🧩 Evento de core.ingress recibido:', event);
-              case 'search.events': {
-                const flightCartsController = require('../controllers/flightCartsController');
-                switch (event.event_type) {
-                  case 'search.cart.item.added': {
-                    // Mapeo: userId -> externalUserId, flightId -> flights
-                    const { userId, flightId, addedAt } = event.payload;
-                    const req = { body: { externalUserId: userId, flights: flightId } };
-                    const res = {
-                      status: (code) => ({ json: (obj) => console.log(`[Cart][${code}]`, obj) }),
-                      json: (obj) => console.log('[Cart][json]', obj),
-                    };
-                    console.log('🛒 Agregando vuelo al carrito:', { userId, flightId, addedAt });
-                    flightCartsController.addFlightToCart(req, res);
-                    break;
-                  }
-                  default:
-                    console.log('Evento de búsqueda no soportado:', event.event_type);
-                }
-                break;
+            const parseLocation = (input, time) => {
+              let code = '';
+              if (typeof input === 'object' && input !== null) {
+                code = input.code || input.city || input;
+              } else {
+                code = input;
               }
-              break;
-            default:
-              console.log('Evento de topic no soportado:', topic);
+              return {
+                city: code === 'EZE' ? 'Buenos Aires' : 'Generic City',
+                code: code,
+                time: time || undefined
+              };
+            };
+            let duration = null;
+            let originTime = undefined;
+            let destinationTime = undefined;
+            try {
+              const dep = new Date(payload.departureAt);
+              const arr = new Date(payload.arrivalAt);
+              if (!isNaN(dep) && !isNaN(arr)) {
+                const totalMinutes = Math.round((arr - dep) / 60000);
+                const hours = Math.floor(totalMinutes / 60);
+                const minutes = totalMinutes % 60;
+                duration = `${hours}h ${minutes.toString().padStart(2, '0')}m`;
+                originTime = `${dep.getUTCHours().toString().padStart(2, '0')}`;
+                destinationTime = `${arr.getUTCHours().toString().padStart(2, '0')}`;
+              }
+            } catch (e) {
+              duration = null;
+            }
+            let aircraftModel = payload.aircraftModel;
+            if (aircraftModel === 'A320') aircraftModel = 'E190';
+            const flightData = {
+              flightNumber: payload.flightNumber,
+              origin: parseLocation(payload.origin, originTime),
+              destination: parseLocation(payload.destination, destinationTime),
+              aircraft: aircraftModel,
+              aircraftModel: payload.flightId, // flightId goes into aircraftModel
+              flightDate: payload.departureAt.split('T')[0],
+              duration,
+            };
+            const req = { body: flightData };
+            const res = {
+              status: (code) => ({ json: (obj) => console.log(`[IngestFlight][${code}]`, obj) }),
+              json: (obj) => console.log('[IngestFlight][json]', obj),
+            };
+            console.log('🛬 Procesando vuelo creado:', flightData);
+            await flightsController.ingestFlight(req, res);
+          } else if (type === 'flights.flight.updated') {
+            let payload = event.payload;
+            if (typeof payload === 'string') {
+              try {
+                payload = JSON.parse(payload);
+              } catch (e) {
+                console.error('Error parsing flight update payload:', e, payload);
+                payload = {};
+              }
+            }
+            console.log('✈️ Actualizar vuelo:', payload);
+            const flightsController = require('../controllers/flightsController');
+            const statusMap = {
+              'EN_HORA': 'ONTIME',
+              'ONTIME': 'ONTIME',
+              'DELAYED': 'DELAYED',
+              'DEMORADO': 'DELAYED',
+              'CANCELLED': 'CANCELLED',
+              'CANCELADO': 'CANCELLED'
+            };
+            let mappedPayload = { ...payload };
+            if (mappedPayload.newStatus && statusMap[mappedPayload.newStatus.toUpperCase()]) {
+              mappedPayload.newStatus = statusMap[mappedPayload.newStatus.toUpperCase()];
+            }
+            if (mappedPayload.status && statusMap[mappedPayload.status.toUpperCase()]) {
+              mappedPayload.status = statusMap[mappedPayload.status.toUpperCase()];
+            }
+            if (
+              (mappedPayload.newStatus && mappedPayload.newStatus.toUpperCase() === 'CANCELLED') ||
+              (mappedPayload.status && mappedPayload.status.toUpperCase() === 'CANCELLED')
+            ) {
+              const cancelReq = { params: { externalFlightId: mappedPayload.flightId } };
+              const cancelRes = {
+                status: (code) => ({ json: (obj) => console.log(`[CancelFlight][${code}]`, obj) }),
+                json: (obj) => console.log('[CancelFlight][json]', obj),
+              };
+              flightsController.cancelFlightReservations(cancelReq, cancelRes);
+            } else {
+              const updateReq = { body: mappedPayload };
+              const updateRes = {
+                status: (code) => ({ json: (obj) => console.log(`[UpdateFlight][${code}]`, obj) }),
+                json: (obj) => console.log('[UpdateFlight][json]', obj),
+              };
+              flightsController.updateFlightFields(updateReq, updateRes);
+            }
+          } else if (type === 'search.cart.item.added') {
+            const flightCartsController = require('../controllers/flightCartsController');
+            let payload = event.payload;
+            if (typeof payload === 'string') {
+              try {
+                payload = JSON.parse(payload);
+              } catch (e) {
+                console.error('Error parsing cart payload:', e, payload);
+                payload = {};
+              }
+            }
+            const { userId, flightId, addedAt } = payload;
+            const req = { body: { externalUserId: userId, flights: flightId } };
+            const res = {
+              status: (code) => ({ json: (obj) => console.log(`[Cart][${code}]`, obj) }),
+              json: (obj) => console.log('[Cart][json]', obj),
+            };
+            console.log('🛒 Agregando vuelo al carrito:', { userId, flightId, addedAt });
+            flightCartsController.addFlightToCart(req, res);
+          } else if (type === 'reservations.reservation.created') {
+            console.log('📅 Evento de reserva recibido:', event);
+          } else if (type === 'payments.payment.created') {
+            console.log('💰 Evento de pago recibido:', event);
+          } else if (type === 'users.user.created') {
+            console.log('👤 Evento de usuario recibido:', event);
+          } else if (type === 'metrics.metric.created') {
+            console.log('📈 Evento de métricas recibido:', event);
+          } else if (type === 'core.ingress') {
+            console.log('🧩 Evento de core.ingress recibido:', event);
+          } else {
+            console.log('Evento no soportado:', type);
           }
         }
       } catch (e) {
