@@ -3,7 +3,7 @@ const flightsModel = require('../models/flightsModel');
 
 exports.ingestFlight = (req, res) => {
     const flightData = req.body;
-    if (!flightData || !flightData.id || !flightData.origin || !flightData.destination || !flightData.aircraft) {
+    if (!flightData || !flightData.origin || !flightData.destination || !flightData.aircraft) {
         return res.status(400).json({ error: 'Missing required flight data (id, origin, destination, aircraft)' });
     }
     
@@ -66,30 +66,27 @@ exports.cancelFlightReservations = (req, res) => {
 
 // ✅ NUEVO: Cambiar estado del vuelo a DELAYED
 exports.updateFlightToDelayed = (req, res) => {
-    const { externalFlightId } = req.params;
-    
-    if (!externalFlightId) {
+    const { aircraftModel } = req.params;
+
+    if (!aircraftModel) {
         return res.status(400).json({ 
-            error: 'Missing required parameter: externalFlightId' 
+            error: 'Missing required parameter: aircraftModel' 
         });
     }
 
-    flightsModel.updateFlightToDelayed(externalFlightId, (err, result) => {
+    flightsModel.updateFlightToDelayed(aircraftModel, (err, result) => {
         if (err) {
             console.error('Error updating flight to delayed:', err);
-            
             if (err.message === 'Flight not found') {
                 return res.status(404).json({ 
                     error: 'Flight not found',
-                    flightId: externalFlightId
+                    aircraftModel
                 });
             }
-            
             return res.status(500).json({ 
                 error: 'Error updating flight status' 
             });
         }
-
         res.status(200).json(result);
     });
 };
@@ -97,9 +94,11 @@ exports.updateFlightToDelayed = (req, res) => {
 // Actualiza cualquier campo del vuelo (status, horarios, etc)
 exports.updateFlightFields = (req, res) => {
     const flightData = req.body;
-    if (!flightData || !flightData.flightId) {
-        return res.status(400).json({ error: 'Missing required flightId' });
+    if (!flightData || !flightData.aircraftModel) {
+        return res.status(400).json({ error: 'Missing required aircraftModel' });
     }
+    // Usar aircraftModel como identificador
+    flightData.flightId = flightData.aircraftModel;
     flightsModel.updateFlightFields(flightData, (err, result) => {
         if (err) {
             return res.status(500).json({ error: 'Error updating flight', details: err });
