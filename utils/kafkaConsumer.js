@@ -118,27 +118,32 @@ async function runKafkaConsumer() {
               'CANCELADO': 'CANCELLED'
             };
 
-            let mappedPayload = { ...payload };
-            const normalizeStatus = (s) => (s && statusMap[s.toUpperCase()]) || s;
-            mappedPayload.newStatus = normalizeStatus(mappedPayload.newStatus);
-            mappedPayload.status = normalizeStatus(mappedPayload.status);
+            // Mapeo correcto de campos para update
+            let mappedPayload = {};
+            if (payload.flightId) {
+              mappedPayload.aircraftModel = String(payload.flightId);
+            }
+            if (payload.newStatus) {
+              // Mapear a flightStatus y normalizar
+              const normalizeStatus = (s) => (s && statusMap[s.toUpperCase()]) || s;
+              mappedPayload.flightStatus = normalizeStatus(payload.newStatus);
+            }
+            if (payload.newDepartureAt) {
+              mappedPayload.newDepartureAt = payload.newDepartureAt;
+            }
+            if (payload.newArrivalAt) {
+              mappedPayload.newArrivalAt = payload.newArrivalAt;
+            }
 
             // Si el vuelo fue cancelado
-            if (
-              (mappedPayload.newStatus && mappedPayload.newStatus === 'CANCELLED') ||
-              (mappedPayload.status && mappedPayload.status === 'CANCELLED')
-            ) {
-              const cancelReq = { params: { aircraftModel: String(mappedPayload.flightId) } };
+            if (mappedPayload.flightStatus && mappedPayload.flightStatus === 'CANCELLED') {
+              const cancelReq = { params: { aircraftModel: mappedPayload.aircraftModel } };
               const cancelRes = {
                 status: (code) => ({ json: (obj) => console.log(`[CancelFlight][${code}]`, obj) }),
                 json: (obj) => console.log('[CancelFlight][json]', obj),
               };
               flightsController.cancelFlightReservations(cancelReq, cancelRes);
             } else {
-              // flightId del evento SIEMPRE se guarda como aircraftModel
-              if (mappedPayload.flightId) {
-                mappedPayload.aircraftModel = String(mappedPayload.flightId);
-              }
               const updateReq = { body: mappedPayload };
               const updateRes = {
                 status: (code) => ({ json: (obj) => console.log(`[UpdateFlight][${code}]`, obj) }),

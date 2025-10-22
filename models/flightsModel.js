@@ -251,7 +251,16 @@ const updateFlightToDelayed = (externalFlightId, callback) => {
 // flightData debe incluir flightId y los campos a actualizar
 const updateFlightFields = (flightData, callback) => {
     // Usar aircraftModel como identificador principal
-    const { aircraftModel, ...fieldsToUpdate } = flightData;
+    // Mapear flightId a aircraftModel si viene en el objeto
+    let aircraftModel = flightData.aircraftModel;
+    if (!aircraftModel && flightData.flightId) {
+        aircraftModel = String(flightData.flightId);
+    }
+    // Copia de los campos a actualizar
+    const fieldsToUpdate = { ...flightData };
+    // Eliminar identificadores del objeto de actualización
+    delete fieldsToUpdate.aircraftModel;
+    delete fieldsToUpdate.flightId;
     if (!aircraftModel || Object.keys(fieldsToUpdate).length === 0) {
         return callback(new Error('aircraftModel y al menos un campo a actualizar son requeridos'));
     }
@@ -322,6 +331,10 @@ const updateFlightFields = (flightData, callback) => {
     };
 
     updateJsonFields(() => {
+        // Descartar flightId si está presente
+        if ('flightId' in fieldsToUpdate) {
+            delete fieldsToUpdate.flightId;
+        }
         // Procesar el resto de los campos (status, etc)
         for (const [key, value] of Object.entries(fieldsToUpdate)) {
             const column = fieldMap[key] || key;
