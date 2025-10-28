@@ -1,4 +1,3 @@
-// jest.setup.js
 
 // Mockea la conexión a la base de datos
 jest.mock('./config/db.js', () => {
@@ -23,7 +22,6 @@ jest.mock('./config/db.js', () => {
   };
 });
 
-// Mockea todos los modelos para asegurar que las pruebas son unitarias
 jest.mock('./models/flightsModel.js');
 jest.mock('./models/paymentEventsModel.js');
 jest.mock('./models/reservationsModel.js');
