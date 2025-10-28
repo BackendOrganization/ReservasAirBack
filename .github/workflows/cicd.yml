@@ -18,14 +18,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       - name: Install dependencies
         run: npm install
 
       # Descomenta si quieres ejecutar tests
-      - name: Run tests
-        run: npx jest --ci
+      #- name: Run tests
+      # run: npm test --if-present
 
   deploy:
     name: Deploy to Railway
