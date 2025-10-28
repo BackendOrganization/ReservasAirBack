@@ -21,7 +21,7 @@ describe('paymentEventsController', () => {
     });
 
     describe('confirmPayment', () => {
-        test('Deberia confirmar pago exitoso', () => {
+    test('debería confirmar pago exitoso', () => {
             mockRequest.body = {
                 paymentStatus: 'SUCCESS',
                 reservationId: 1,
@@ -35,21 +35,21 @@ describe('paymentEventsController', () => {
             expect(mockResponse.json).toHaveBeenCalledWith({ success: true });
         });
 
-        test('Deberia retornar status code 400 por falta de campos requeridos', () => {
+    test('debería retornar status code 400 por falta de campos requeridos', () => {
             mockRequest.body = { paymentStatus: 'SUCCESS' };
             paymentEventsController.confirmPayment(mockRequest, mockResponse);
             expect(mockResponse.status).toHaveBeenCalledWith(400);
             expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Missing required fields: paymentStatus, reservationId, externalUserId' });
         });
 
-        test('Deberia retornar 400 si el estado del pago no es SUCCESS', () => {
+    test('debería retornar 400 si el estado del pago no es SUCCESS', () => {
             mockRequest.body = { paymentStatus: 'FAILED', reservationId: 1, externalUserId: 'user123' };
             paymentEventsController.confirmPayment(mockRequest, mockResponse);
             expect(mockResponse.status).toHaveBeenCalledWith(400);
             expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Only paymentStatus SUCCESS is allowed for confirmation.' });
         });
 
-        test('Deberia retornar status code 500 si el modelo falla', () => {
+    test('debería retornar status code 500 si el modelo falla', () => {
             mockRequest.body = { paymentStatus: 'SUCCESS', reservationId: 1, externalUserId: 'user1' };
             paymentEventsModel.confirmPayment.mockImplementation((_, __, ___, cb) => cb('DB error'));
 
@@ -61,7 +61,7 @@ describe('paymentEventsController', () => {
     });
 
     describe('cancelPayment', () => {
-        test('Deberia cancelar el pago exitosamente', () => {
+    test('debería cancelar el pago exitosamente', () => {
             mockRequest.body = { reservationId: 1, externalUserId: 'user123' };
             paymentEventsModel.cancelPayment.mockImplementationOnce((resId, userId, callback) => {
                 callback(null, { success: true });
@@ -71,7 +71,7 @@ describe('paymentEventsController', () => {
             expect(mockResponse.json).toHaveBeenCalledWith({ success: true });
         });
 
-        test('Deberia retornar 400 por falta de datos', () => {
+    test('debería retornar 400 por falta de datos', () => {
             mockRequest.body = { reservationId: 1 };
             paymentEventsController.cancelPayment(mockRequest, mockResponse);
             expect(mockResponse.status).toHaveBeenCalledWith(400);
@@ -80,7 +80,7 @@ describe('paymentEventsController', () => {
     });
 
     describe('failPayment', () => {
-        test('Deberia procesar un pago fallido y marcar el pago como FAILED', () => {
+    test('debería procesar un pago fallido y marcar el pago como FAILED', () => {
             const paymentData = { paymentStatus: 'FAILED', reservationId: 1, externalUserId: 'user123' };
             mockRequest.body = paymentData;
             paymentEventsModel.createPaymentEventAndFailReservation.mockImplementationOnce((data, callback) => {
@@ -92,7 +92,7 @@ describe('paymentEventsController', () => {
             expect(mockResponse.json).toHaveBeenCalledWith({ message: 'Payment event created and reservation marked as FAILED', paymentEventId: 10, reservationId: 1 });
         });
 
-        test('Deberia retornar 400 por falta de datos', () => {
+    test('debería retornar 400 por falta de datos', () => {
             mockRequest.body = {};
             paymentEventsController.failPayment(mockRequest, mockResponse);
             expect(mockResponse.status).toHaveBeenCalledWith(400);

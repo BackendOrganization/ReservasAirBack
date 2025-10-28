@@ -1,4 +1,4 @@
-// tests/seatsController.test.js
+
 const seatsController = require('../controllers/seatsController');
 const seatsModel = require('../models/seatsModel');
 
@@ -24,7 +24,7 @@ describe('seatsController', () => {
     });
 
     describe('getReservedOrConfirmedSeats', () => {
-        test('deberia obtener los asientos reservados para un vuelo', () => {
+    test('debería obtener los asientos reservados para un vuelo', () => {
             mockRequest.params.externalFlightId = 'flight123';
             const mockData = { flightId: 'flight123', occupiedSeats: [], reservedSeats: ['A1'] };
             seatsModel.getReservedOrConfirmedSeats.mockImplementationOnce((flightId, callback) => {
@@ -35,13 +35,13 @@ describe('seatsController', () => {
             expect(mockResponse.json).toHaveBeenCalledWith(mockData);
         });
 
-        test('Deberia devolver 400 por falta del campo externalFlightId ', () => {
+    test('debería devolver 400 por falta del campo externalFlightId', () => {
             seatsController.getReservedOrConfirmedSeats(mockRequest, mockResponse);
             expect(mockResponse.status).toHaveBeenCalledWith(400);
             expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Missing externalFlightId' });
         });
 
-        test('Deberia retornar 500 por error en el modelo', () => {
+    test('debería retornar 500 por error en el modelo', () => {
             mockRequest.params.externalFlightId = 'flight123';
             seatsModel.getReservedOrConfirmedSeats.mockImplementationOnce((flightId, callback) => {
                 callback('Database Error');
