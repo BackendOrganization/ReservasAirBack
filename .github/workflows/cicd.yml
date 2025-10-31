@@ -25,7 +25,7 @@ jobs:
 
       # Descomenta si quieres ejecutar tests
       - name: Run tests
-        run: npx jest --ci
+        run: npx jest --ci --silent
 
   deploy:
     name: Deploy to Railway
