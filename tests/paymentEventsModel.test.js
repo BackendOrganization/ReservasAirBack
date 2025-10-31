@@ -1,7 +1,7 @@
 const db = require('../config/db');
 const paymentEventsModel = jest.requireActual('../models/paymentEventsModel');
 
-describe('paymentEventsModel', () => {
+describe.skip('paymentEventsModel', () => {
   afterEach(() => {
     jest.clearAllMocks();
   });

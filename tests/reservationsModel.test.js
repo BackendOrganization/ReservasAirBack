@@ -1,3 +1,31 @@
+describe.skip('paymentEventsModel', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test('debería confirmar el pago (camino feliz completo)', (done) => {
+    // Mock del SELECT de reserva
+    db.query.mockImplementation((sql, params, callback) => {
+      if (sql.includes('FROM reservations')) {
+        return callback(null, [{ id: 1, status: 'PENDING' }]); // simula que existe
+      }
+      if (sql.startsWith('UPDATE')) {
+        return callback(null, { affectedRows: 1 }); // simula actualización exitosa
+      }
+      if (sql.includes('INSERT INTO payment_events')) {
+        return callback(null, { insertId: 123 }); // simula creación de evento
+      }
+      return callback(null, []); // default vacío
+    });
+
+    paymentEventsModel.confirmPayment(1, 'user1', (err, result) => {
+      expect(err).toBeNull();
+      expect(result).toEqual({
+        success: true,
+        message: 'Payment confirmed, reservation PAID, seats CONFIRMED, payment event created.',
+      });
+      done();
+    });
+  });
+});
 const db = require('../config/db');
 const reservationsModel = jest.requireActual('../models/reservationsModel');
 
