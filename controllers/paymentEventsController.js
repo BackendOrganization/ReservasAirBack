@@ -11,7 +11,10 @@ exports.confirmPayment = (req, res) => {
     if (paymentStatus !== 'SUCCESS') {
         return res.status(400).json({ error: 'Only paymentStatus SUCCESS is allowed for confirmation.' }); // 400
     }
+    let responded = false;
     paymentEventsModel.confirmPayment(paymentStatus, reservationId, externalUserId, (err, result) => {
+        if (responded) return;
+        responded = true;
         if (err) {
             console.error(err);
             return res.status(500).json({ error: 'Error confirming payment' }); // 500
