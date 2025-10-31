@@ -169,13 +169,23 @@ async function runKafkaConsumer() {
             }
 
             const { userId, flightId, addedAt } = payload;
-            const req = { body: { externalUserId: userId, flights: flightId } };
+            // Buscar el externalFlightId real a partir del aircraftModel (flightId recibido)
+            const flightsModel = require('../models/flightsModel');
+            const req = { body: {} };
             const res = {
               status: (code) => ({ json: (obj) => console.log(`[Cart][${code}]`, obj) }),
               json: (obj) => console.log('[Cart][json]', obj),
             };
-            console.log('🛒 Agregando vuelo al carrito:', { userId, flightId, addedAt });
-            flightCartsController.addFlightToCart(req, res);
+            console.log('🛒 Buscando externalFlightId para aircraftModel:', flightId);
+            flightsModel.getFlightByAircraftModel(flightId, (err, flight) => {
+              if (err || !flight) {
+                console.error('❌ No se encontró el vuelo para aircraftModel:', flightId, err);
+                return res.status(404).json({ error: 'Vuelo no encontrado para agregar al carrito' });
+              }
+              req.body = { externalUserId: userId, flights: flight.externalFlightId };
+              console.log('🛒 Agregando vuelo al carrito:', { userId, externalFlightId: flight.externalFlightId, addedAt });
+              flightCartsController.addFlightToCart(req, res);
+            });
           }
 
           // ==============================================================

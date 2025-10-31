@@ -30,6 +30,30 @@ async function sendReservationCreatedHttpEvent(reservationData) {
     }
   });
 }
+
+async function sendReservationUpdatedHttpEvent(reservationData) {
+  const now = new Date().toISOString();
+  const messageId = `msg-${Date.now()}`;
+  const correlationId = `corr-${Date.now()}`;
+  const idempotencyKey = `reservation-updated-${reservationData.reservationId}-${Date.now()}`;
+  const message = {
+    messageId,
+    eventType: 'reservations.reservation.updated',
+    schemaVersion: '1.0',
+    occurredAt: now,
+    producer: 'reservations-service',
+    correlationId,
+    idempotencyKey,
+    payload: JSON.stringify(reservationData)
+  };
+
+  await axios.post('http://34.172.179.60/events', message, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': 'microservices-api-key-2024-secure'
+    }
+  });
+}
 const { createProducer } = require('./kafkaInitializer');
 
 class KafkaProducerService {
@@ -65,7 +89,6 @@ class KafkaProducerService {
     }
   }
 
-  // Publicar evento de reserva creada
   async sendReservationCreatedEvent(reservationData) {
     // Validar campos obligatorios
     const requiredFields = ['reservationId','userId','flightId','amount','currency','reservedAt'];
@@ -101,8 +124,64 @@ class KafkaProducerService {
     return this.sendMessage('reservations.events', message, reservationData.reservationId);
   }
 
+  async sendReservationCreatedEvent(reservationData) {
+    const requiredFields = ['reservationId','userId','flightId','amount','currency','reservedAt'];
+    for (const field of requiredFields) {
+      if (!(field in reservationData)) {
+        throw new Error(`Missing required field: ${field}`);
+      }
+    }
+    const now = new Date().toISOString();
+    const messageId = `msg-${Date.now()}`;
+    const correlationId = `corr-${Date.now()}`;
+    const idempotencyKey = `reservation-${reservationData.reservationId}-${Date.now()}`;
+    const message = {
+      messageId,
+      eventType: 'reservations.reservation.created',
+      schemaVersion: '1.0',
+      occurredAt: now,
+      producer: 'reservations-service',
+      correlationId,
+      idempotencyKey,
+      payload: JSON.stringify({
+        reservationId: String(reservationData.reservationId),
+        userId: String(reservationData.userId),
+        flightId: String(reservationData.flightId),
+        amount: Number(reservationData.amount),
+        currency: reservationData.currency,
+        reservedAt: reservationData.reservedAt
+      })
+    };
+    return this.sendMessage('reservations.events', message, reservationData.reservationId);
+  }
+
+  async sendReservationUpdatedEvent(reservationData) {
+    if (!reservationData.reservationId) {
+      throw new Error('Missing required field: reservationId');
+    }
+    const now = new Date().toISOString();
+    const messageId = `msg-${Date.now()}`;
+    const correlationId = `corr-${Date.now()}`;
+    const idempotencyKey = `reservation-updated-${reservationData.reservationId}-${Date.now()}`;
+    const message = {
+      messageId,
+      eventType: 'reservations.reservation.updated',
+      schemaVersion: '1.0',
+      occurredAt: now,
+      producer: 'reservations-service',
+      correlationId,
+      idempotencyKey,
+      payload: JSON.stringify(reservationData)
+    };
+    return this.sendMessage('reservations.events', message, reservationData.reservationId);
+  }
+
   async sendReservationCreatedHttpEvent(reservationData) {
     return sendReservationCreatedHttpEvent(reservationData);
+  }
+
+  async sendReservationUpdatedHttpEvent(reservationData) {
+    return sendReservationUpdatedHttpEvent(reservationData);
   }
 
   async disconnect() {
