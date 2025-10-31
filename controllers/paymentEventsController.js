@@ -4,6 +4,7 @@ const seatsModel = require('../models/seatsModel');
 
 exports.confirmPayment = (req, res) => {
     const { paymentStatus, reservationId, externalUserId } = req.body;
+    console.log('[confirmPayment] Datos recibidos:', { paymentStatus, reservationId, externalUserId });
     if (!paymentStatus || !reservationId || !externalUserId) {
         return res.status(400).json({ error: 'Missing required fields: paymentStatus, reservationId, externalUserId' }); // 400
     }
