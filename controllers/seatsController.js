@@ -15,4 +15,4 @@ exports.getReservedOrConfirmedSeats = (req, res) => {
         res.json(data);
     });
 };
-
+// Reserve a seat
