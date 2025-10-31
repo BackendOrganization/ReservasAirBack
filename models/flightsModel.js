@@ -351,11 +351,23 @@ const updateFlightFields = (flightData, callback) => {
     });
 };
 
+// Buscar vuelo por aircraftModel (flightId del evento) y devolver externalFlightId y otros datos relevantes
+const getFlightByAircraftModel = (aircraftModel, callback) => {
+    const sql = 'SELECT * FROM flights WHERE aircraftModel = ? LIMIT 1';
+    db.query(sql, [aircraftModel], (err, results) => {
+        if (err) return callback(err);
+        if (!results.length) return callback(new Error('Vuelo no encontrado para aircraftModel: ' + aircraftModel));
+        callback(null, results[0]);
+    });
+};
+
+
 module.exports = { 
     insertFlight, 
     cancelReservationsByFlight, 
     getAllFlights, 
     calculateTotalSeats,
     updateFlightToDelayed, // ✅ NUEVO
-    updateFlightFields
+    updateFlightFields,
+    getFlightByAircraftModel
 };
