@@ -1,6 +1,7 @@
 const paymentEventsModel = require('../models/paymentEventsModel');
 const reservationsModel = require('../models/reservationsModel');
 const seatsModel = require('../models/seatsModel');
+const eventsProducer = require('../utils/kafkaProducer');
 
 exports.confirmPayment = (req, res) => {
     const { paymentStatus, reservationId, externalUserId } = req.body;
@@ -12,7 +13,7 @@ exports.confirmPayment = (req, res) => {
         return res.status(400).json({ error: 'Only paymentStatus SUCCESS is allowed for confirmation.' }); // 400
     }
     let responded = false;
-    paymentEventsModel.confirmPayment(paymentStatus, reservationId, externalUserId, (err, result) => {
+    paymentEventsModel.confirmPayment(paymentStatus, reservationId, externalUserId, async (err, result) => {
         if (responded) return;
         responded = true;
         if (err) {
@@ -22,6 +23,21 @@ exports.confirmPayment = (req, res) => {
         if (result && result.success === false) {
             return res.status(400).json({ error: result.message }); // 400
         }
+        
+        // Publicar evento de actualización de reserva
+        try {
+            await eventsProducer.sendReservationUpdatedEvent({
+                reservationId: String(reservationId),
+                newStatus: 'PAID',
+                reservationDate: result.reservationDate,
+                flightDate: result.flightDate
+            });
+            console.log('✅ Reservation updated event published for PAID status');
+        } catch (eventError) {
+            console.error('❌ Error publishing reservation updated event:', eventError);
+            // No fallar la respuesta aunque falle el evento
+        }
+        
         res.status(200).json(result); // 200
     });
 };
@@ -31,11 +47,26 @@ exports.cancelPayment = (req, res) => {
     if (!reservationId || !externalUserId) {
         return res.status(400).json({ error: 'Missing required fields: reservationId, externalUserId' }); // 400
     }
-    paymentEventsModel.cancelPayment(reservationId, externalUserId, (err, result) => {
+    paymentEventsModel.cancelPayment(reservationId, externalUserId, async (err, result) => {
         if (err) {
             console.error(err);
             return res.status(500).json({ error: 'Error cancelling payment' }); // 500
         }
+        
+        // Publicar evento de actualización de reserva
+        try {
+            await eventsProducer.sendReservationUpdatedEvent({
+                reservationId: String(reservationId),
+                newStatus: 'CANCELLED',
+                reservationDate: result.reservationDate,
+                flightDate: result.flightDate
+            });
+            console.log('✅ Reservation updated event published for CANCELLED status');
+        } catch (eventError) {
+            console.error('❌ Error publishing reservation updated event:', eventError);
+            // No fallar la respuesta aunque falle el evento
+        }
+        
         res.status(200).json(result); // 200
     });
 };
@@ -45,10 +76,25 @@ exports.failPayment = (req, res) => {
     if (!paymentData.paymentStatus || !paymentData.reservationId || !paymentData.externalUserId) {
         return res.status(400).json({ error: 'Missing required payment data' }); // 400
     }
-    paymentEventsModel.createPaymentEventAndFailReservation(paymentData, (err, result) => {
+    paymentEventsModel.createPaymentEventAndFailReservation(paymentData, async (err, result) => {
         if (err) {
             return res.status(500).json({ error: 'Error processing payment event', details: err }); // 500
         }
+        
+        // Publicar evento de actualización de reserva
+        try {
+            await eventsProducer.sendReservationUpdatedEvent({
+                reservationId: String(paymentData.reservationId),
+                newStatus: 'FAILED',
+                reservationDate: result.reservationDate,
+                flightDate: result.flightDate
+            });
+            console.log('✅ Reservation updated event published for FAILED status');
+        } catch (eventError) {
+            console.error('❌ Error publishing reservation updated event:', eventError);
+            // No fallar la respuesta aunque falle el evento
+        }
+        
         res.status(201).json({ message: 'Payment event created and reservation marked as FAILED', ...result }); // 201
     });
 };
