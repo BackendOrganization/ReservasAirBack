@@ -70,13 +70,13 @@ async function runKafkaConsumer() {
               duration = null;
             }
 
-            // ✅ Guarda flightId en aircraftModel literalmente
+   
             const flightData = {
               flightNumber: payload.flightNumber,
               origin: parseLocation(payload.origin, originTime),
               destination: parseLocation(payload.destination, destinationTime),
-              aircraft: payload.aircraftModel || 'UNKNOWN', // modelo real del avión
-              aircraftModel: String(payload.flightId),      // 🔥 guarda el flightId (ej: "56")
+              aircraft: payload.aircraftModel || 'UNKNOWN', 
+              aircraftModel: String(payload.flightId),      
               flightDate: payload.departureAt.split('T')[0],
               duration,
             };
@@ -193,6 +193,81 @@ async function runKafkaConsumer() {
           // ==============================================================
           else if (type === 'reservations.reservation.created') {
             console.log('📅 Evento de reserva recibido:', event);
+          }
+
+          // ==============================================================
+          // 💰 EVENTO: PAYMENT UPDATED
+          // ==============================================================
+          else if (type === 'payments.payment.updated' || type === 'payments.payment.status_updated') {
+            console.log('💰 Evento de pago actualizado recibido:', event);
+            const paymentEventsController = require('../controllers/paymentEventsController');
+            
+            let payload = event.payload;
+            if (typeof payload === 'string') {
+              try {
+                payload = JSON.parse(payload);
+              } catch (e) {
+                console.error('Error parsing payment payload:', e, payload);
+                continue;
+              }
+            }
+
+            const { reservationId, userId, status, amount } = payload;
+            
+            if (!reservationId || !userId || !status) {
+              console.error('❌ Payload de pago incompleto:', payload);
+              continue;
+            }
+
+            console.log(`💳 Procesando pago: reservationId=${reservationId}, status=${status}`);
+
+            // Procesar de forma SÍNCRONA usando Promise
+            await new Promise((resolve, reject) => {
+              // Mock req/res para usar los controllers
+              const req = { body: {} };
+              const res = {
+                status: (code) => ({
+                  json: (obj) => {
+                    if (code >= 400) {
+                      console.error(`[PaymentEvent][${code}]`, obj);
+                    } else {
+                      console.log(`[PaymentEvent][${code}]`, obj);
+                    }
+                    resolve(); // Resolver cuando termina
+                  }
+                }),
+                json: (obj) => {
+                  console.log('[PaymentEvent][json]', obj);
+                  resolve(); // Resolver cuando termina
+                }
+              };
+
+              // Procesar según el estado del pago
+              if (status === 'SUCCESS' || status === 'PAID') {
+                req.body = {
+                  paymentStatus: 'SUCCESS',
+                  reservationId: reservationId,
+                  externalUserId: userId
+                };
+                console.log('✅ Confirmando pago vía controller...');
+                paymentEventsController.confirmPayment(req, res);
+              } 
+              else if (status === 'FAILED' || status === 'REJECTED') {
+                req.body = {
+                  paymentStatus: 'FAILED',
+                  reservationId: reservationId,
+                  externalUserId: userId
+                };
+                console.log('❌ Marcando pago como fallido vía controller...');
+                paymentEventsController.failPayment(req, res);
+              }
+              else {
+                console.log(`ℹ️ Estado de pago no procesado: ${status}`);
+                resolve(); // Resolver inmediatamente si no se procesa
+              }
+            });
+            
+            console.log(`✅ Evento de pago procesado completamente para reservationId=${reservationId}`);
           }
 
           // ==============================================================

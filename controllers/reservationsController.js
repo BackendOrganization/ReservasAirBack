@@ -43,21 +43,6 @@ exports.createReservation = async (req, res) => {
     reservationsModel.createReservation(externalUserId, externalFlightId, seatIds, 'ARS', async (err, result) => {
         if (err) {
             console.error(err);
-            
-            // 📨 Enviar evento de reserva fallida a Kafka
-            try {
-                await kafkaProducer.sendReservationEvent('RESERVATION_FAILED', {
-                    externalUserId,
-                    externalFlightId,
-                    seatIds,
-                    error: err.message,
-                    reason: 'SEAT_ALREADY_RESERVED'
-                });
-                console.log('📨 Reservation failed event sent to Kafka');
-            } catch (kafkaError) {
-                console.error('❌ Failed to send reservation failed event to Kafka:', kafkaError);
-            }
-            
             return res.status(500).json({ error: 'Seat is already reserved' }); // 500
         }
         
@@ -89,40 +74,13 @@ exports.cancelReservation = async (req, res) => {
     
     reservationsModel.cancelReservation(reservationId, async (err, result) => {
         if (result) {
-            // 📨 Enviar evento de cancelación a Kafka
-            try {
-                await kafkaProducer.sendReservationEvent('RESERVATION_CANCELLED', {
-                    reservationId,
-                    cancelledBy: 'USER',
-                    reason: 'USER_REQUESTED'
-                });
-                console.log(`📨 Reservation cancelled event sent to Kafka for reservation ${reservationId}`);
-            } catch (kafkaError) {
-                console.error('❌ Failed to send reservation cancelled event to Kafka:', kafkaError);
-            }
-            
             return res.status(200).json(result);
         }
         
         if (err) {
             console.error(err);
-            
-            // 📨 Enviar evento de error en cancelación a Kafka
-            try {
-                await kafkaProducer.sendReservationEvent('RESERVATION_CANCELLATION_FAILED', {
-                    reservationId,
-                    error: err.message,
-                    reason: 'CANCELLATION_ERROR'
-                });
-                console.log('📨 Reservation cancellation failed event sent to Kafka');
-            } catch (kafkaError) {
-                console.error('❌ Failed to send cancellation failed event to Kafka:', kafkaError);
-            }
-            
-            return res.status(500).json({ error: 'Error cancelling reservation', details: err });
+            return res.status(500).json({ error: 'Error cancelling reservation' }); // 500
         }
-        
-        res.status(500).json({ error: 'Unknown error cancelling reservation' });
     });
 };
 

@@ -7,8 +7,10 @@ const db = mysql.createPool({
   database: 'railway',
   port: 51597,
   waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
+  connectionLimit: 50,  // Aumentado de 10 a 50
+  queueLimit: 0,
+  acquireTimeout: 30000,  // Timeout de 30 segundos
+  timeout: 60000  // Query timeout de 60 segundos
 });
 
 // Test the pool connection

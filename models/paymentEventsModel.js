@@ -28,20 +28,34 @@ const safeParseSeatIds = (seatIdRaw) => {
  * Confirm payment (uses simple queries, no long transaction)
  */
 const confirmPayment = (paymentStatus, reservationId, externalUserId, callback) => {
+  console.log('[confirmPayment MODEL] Iniciando con:', { paymentStatus, reservationId, externalUserId });
   // Solo permitir confirmación si la reserva NO está en estado PAID
   const checkReservationQuery = `SELECT status FROM reservations WHERE reservationId = ? LIMIT 1`;
+  console.log('[confirmPayment MODEL] Ejecutando query:', checkReservationQuery, 'con reservationId:', reservationId);
   db.query(checkReservationQuery, [reservationId], (errRes, resRows) => {
-    if (errRes) return callback(errRes);
-    if (!resRows[0]) return callback(null, { success: false, message: 'Reservation not found.' });
+    console.log('[confirmPayment MODEL] Callback de query ejecutado. Error:', errRes, 'Rows:', resRows);
+    if (errRes) {
+      console.log('[confirmPayment MODEL] Error checking reservation:', errRes);
+      return callback(errRes);
+    }
+    if (!resRows[0]) {
+      console.log('[confirmPayment MODEL] Reservation not found');
+      return callback(null, { success: false, message: 'Reservation not found.' });
+    }
     if (resRows[0].status === 'PAID') {
+      console.log('[confirmPayment MODEL] Already PAID');
       return callback(null, { success: false, message: 'Payment already confirmed for this reservation.' });
     }
+    console.log('[confirmPayment MODEL] Reservation status:', resRows[0].status);
     function continueConfirm() {
       const getPendingEventQuery = `SELECT amount FROM paymentEvents WHERE reservationId = ? AND externalUserId = ? AND paymentStatus = 'PENDING' LIMIT 1`;
       db.query(getPendingEventQuery, [reservationId, externalUserId], (err, rows) => {
         console.log('[confirmPayment] Resultado SQL:', rows);
         if (err) return callback(err);
-        if (!rows[0]) return callback(null, { success: false, message: 'No pending payment event found.' });
+        if (!rows[0]) {
+          console.log('[confirmPayment MODEL] No pending payment event found');
+          return callback(null, { success: false, message: 'No pending payment event found.' });
+        }
         const amount = rows[0].amount;
 
         db.getConnection((connErr, connection) => {
@@ -85,32 +99,57 @@ const confirmPayment = (paymentStatus, reservationId, externalUserId, callback) 
                   const { seatId, externalFlightId } = rows2[0];
                   const seatIds = safeParseSeatIds(seatId);
 
-                  if (seatIds.length === 0) {
-                    return connection.commit((cErr) => {
-                      if (cErr) {
-                        console.error('[confirmPayment] Commit error (no seats):', cErr);
-                        return connection.rollback(() => { connection.release(); callback(cErr); });
-                      }
-                      connection.release();
-                      callback(null, { success: true, message: 'Payment confirmed, reservation PAID. No seats to confirm.' });
-                    });
-                  }
+                  // Obtener fechas para el evento
+                  const getDatesQuery = `
+                    SELECT r.createdAt as reservationDate, f.flightDate 
+                    FROM reservations r 
+                    LEFT JOIN flights f ON r.externalFlightId = f.externalFlightId 
+                    WHERE r.reservationId = ?
+                  `;
+                  connection.query(getDatesQuery, [reservationId], (err4b, dateRows) => {
+                    if (err4b) {
+                      console.error('[confirmPayment] Error fetching dates:', err4b);
+                      return connection.rollback(() => { connection.release(); callback(err4b); });
+                    }
+                    const dates = dateRows[0] || {};
 
-                  const placeholders = seatIds.map(() => '?').join(',');
-                  const confirmSeatsQuery = `UPDATE seats SET status = 'CONFIRMED' WHERE seatId IN (${placeholders}) AND externalFlightId = ?`;
-                  connection.query(confirmSeatsQuery, [...seatIds, externalFlightId], (err5) => {
-                    if (err5) {
-                      console.error('[confirmPayment] Error confirming seats:', err5);
-                      return connection.rollback(() => { connection.release(); callback(err5); });
+                    if (seatIds.length === 0) {
+                      return connection.commit((cErr) => {
+                        if (cErr) {
+                          console.error('[confirmPayment] Commit error (no seats):', cErr);
+                          return connection.rollback(() => { connection.release(); callback(cErr); });
+                        }
+                        connection.release();
+                        callback(null, { 
+                          success: true, 
+                          message: 'Payment confirmed, reservation PAID. No seats to confirm.',
+                          reservationDate: dates.reservationDate,
+                          flightDate: dates.flightDate
+                        });
+                      });
                     }
 
-                    connection.commit((cErr) => {
-                      if (cErr) {
-                        console.error('[confirmPayment] Commit error (after seats):', cErr);
-                        return connection.rollback(() => { connection.release(); callback(cErr); });
+                    const placeholders = seatIds.map(() => '?').join(',');
+                    const confirmSeatsQuery = `UPDATE seats SET status = 'CONFIRMED' WHERE seatId IN (${placeholders}) AND externalFlightId = ?`;
+                    connection.query(confirmSeatsQuery, [...seatIds, externalFlightId], (err5) => {
+                      if (err5) {
+                        console.error('[confirmPayment] Error confirming seats:', err5);
+                        return connection.rollback(() => { connection.release(); callback(err5); });
                       }
-                      connection.release();
-                      callback(null, { success: true, message: 'Payment confirmed, reservation PAID, seats CONFIRMED, payment event created.' });
+
+                      connection.commit((cErr) => {
+                        if (cErr) {
+                          console.error('[confirmPayment] Commit error (after seats):', cErr);
+                          return connection.rollback(() => { connection.release(); callback(cErr); });
+                        }
+                        connection.release();
+                        callback(null, { 
+                          success: true, 
+                          message: 'Payment confirmed, reservation PAID, seats CONFIRMED, payment event created.',
+                          reservationDate: dates.reservationDate,
+                          flightDate: dates.flightDate
+                        });
+                      });
                     });
                   });
                 });
@@ -175,37 +214,59 @@ const cancelPayment = (reservationId, externalUserId, callback) => {
               connection.query(refundEventQuery, [reservationId, externalUserId, totalPrice], (err5) => {
                 if (err5) { console.error('[cancelPayment] refundEventQuery error:', err5); return connection.rollback(() => { connection.release(); callback(err5); }); }
 
-                if (seatIds.length === 0) {
-                  console.log('[cancelPayment] No seats to release. Committing.');
-                  return connection.commit((errCommit) => {
-                    if (errCommit) { console.error('[cancelPayment] commit error:', errCommit); return connection.rollback(() => { connection.release(); callback(errCommit); }); }
-                    connection.release();
-                    return callback(null, { success: true, message: 'Reservation cancelled, refund event created.' });
-                  });
-                }
-
-                const placeholders = seatIds.map(() => '?').join(',');
-                const releaseSeatsQuery = `
-                  UPDATE seats SET status = 'AVAILABLE'
-                  WHERE externalFlightId = ? AND seatId IN (${placeholders}) AND status IN ('RESERVED','CONFIRMED')
+                // Obtener fechas para el evento
+                const getDatesQuery = `
+                  SELECT r.createdAt as reservationDate, f.flightDate 
+                  FROM reservations r 
+                  LEFT JOIN flights f ON r.externalFlightId = f.externalFlightId 
+                  WHERE r.reservationId = ?
                 `;
-                connection.query(releaseSeatsQuery, [externalFlightId, ...seatIds], (err6) => {
-                  if (err6) { console.error('[cancelPayment] releaseSeatsQuery error:', err6); return connection.rollback(() => { connection.release(); callback(err6); }); }
+                connection.query(getDatesQuery, [reservationId], (errDates, dateRows) => {
+                  if (errDates) { console.error('[cancelPayment] getDatesQuery error:', errDates); return connection.rollback(() => { connection.release(); callback(errDates); }); }
+                  const dates = dateRows[0] || {};
 
-                  const seatsCount = seatIds.length;
-                  const updateFlightSql = `
-                    UPDATE flights
-                    SET freeSeats = freeSeats + ?, occupiedSeats = occupiedSeats - ?
-                    WHERE externalFlightId = ?
-                  `;
-                  connection.query(updateFlightSql, [seatsCount, seatsCount, externalFlightId], (err7) => {
-                    if (err7) { console.error('[cancelPayment] updateFlightSql error:', err7); return connection.rollback(() => { connection.release(); callback(err7); }); }
-
-                    console.log('[cancelPayment] All updates done. Committing.');
-                    connection.commit((errCommit) => {
+                  if (seatIds.length === 0) {
+                    console.log('[cancelPayment] No seats to release. Committing.');
+                    return connection.commit((errCommit) => {
                       if (errCommit) { console.error('[cancelPayment] commit error:', errCommit); return connection.rollback(() => { connection.release(); callback(errCommit); }); }
                       connection.release();
-                      callback(null, { success: true, message: 'Reservation cancelled, seats released, refund event created.' });
+                      return callback(null, { 
+                        success: true, 
+                        message: 'Reservation cancelled, refund event created.',
+                        reservationDate: dates.reservationDate,
+                        flightDate: dates.flightDate
+                      });
+                    });
+                  }
+
+                  const placeholders = seatIds.map(() => '?').join(',');
+                  const releaseSeatsQuery = `
+                    UPDATE seats SET status = 'AVAILABLE'
+                    WHERE externalFlightId = ? AND seatId IN (${placeholders}) AND status IN ('RESERVED','CONFIRMED')
+                  `;
+                  connection.query(releaseSeatsQuery, [externalFlightId, ...seatIds], (err6) => {
+                    if (err6) { console.error('[cancelPayment] releaseSeatsQuery error:', err6); return connection.rollback(() => { connection.release(); callback(err6); }); }
+
+                    const seatsCount = seatIds.length;
+                    const updateFlightSql = `
+                      UPDATE flights
+                      SET freeSeats = freeSeats + ?, occupiedSeats = occupiedSeats - ?
+                      WHERE externalFlightId = ?
+                    `;
+                    connection.query(updateFlightSql, [seatsCount, seatsCount, externalFlightId], (err7) => {
+                      if (err7) { console.error('[cancelPayment] updateFlightSql error:', err7); return connection.rollback(() => { connection.release(); callback(err7); }); }
+
+                      console.log('[cancelPayment] All updates done. Committing.');
+                      connection.commit((errCommit) => {
+                        if (errCommit) { console.error('[cancelPayment] commit error:', errCommit); return connection.rollback(() => { connection.release(); callback(errCommit); }); }
+                        connection.release();
+                        callback(null, { 
+                          success: true, 
+                          message: 'Reservation cancelled, seats released, refund event created.',
+                          reservationDate: dates.reservationDate,
+                          flightDate: dates.flightDate
+                        });
+                      });
                     });
                   });
                 });
@@ -259,34 +320,56 @@ const createPaymentEventAndFailReservation = (paymentData, callback) => {
             connection.query(updateReservationSql, [paymentData.reservationId], (err4) => {
               if (err4) return connection.rollback(() => { connection.release(); callback(err4); });
 
-              if (seatsCount === 0 || !externalFlightId) {
-                return connection.commit((cErr) => {
-                  if (cErr) return connection.rollback(() => { connection.release(); callback(cErr); });
-                  connection.release();
-                  return callback(null, { paymentEventId: eventResult.insertId, reservationId: paymentData.reservationId });
-                });
-              }
-
-              const placeholders = seatIds.map(() => '?').join(',');
-              const updateSeatsSql = `
-                UPDATE seats SET status = 'AVAILABLE'
-                WHERE seatId IN (${placeholders}) AND externalFlightId = ? AND status = 'RESERVED'
+              // Obtener fechas para el evento
+              const getDatesQuery = `
+                SELECT r.createdAt as reservationDate, f.flightDate 
+                FROM reservations r 
+                LEFT JOIN flights f ON r.externalFlightId = f.externalFlightId 
+                WHERE r.reservationId = ?
               `;
-              connection.query(updateSeatsSql, [...seatIds, externalFlightId], (err5) => {
-                if (err5) return connection.rollback(() => { connection.release(); callback(err5); });
+              connection.query(getDatesQuery, [paymentData.reservationId], (errDates, dateRows) => {
+                if (errDates) return connection.rollback(() => { connection.release(); callback(errDates); });
+                const dates = dateRows[0] || {};
 
-                const updateFlightSql = `
-                  UPDATE flights
-                  SET freeSeats = freeSeats + ?, occupiedSeats = occupiedSeats - ?
-                  WHERE externalFlightId = ?
-                `;
-                connection.query(updateFlightSql, [seatsCount, seatsCount, externalFlightId], (err6) => {
-                  if (err6) return connection.rollback(() => { connection.release(); callback(err6); });
-
-                  connection.commit((cErr) => {
+                if (seatsCount === 0 || !externalFlightId) {
+                  return connection.commit((cErr) => {
                     if (cErr) return connection.rollback(() => { connection.release(); callback(cErr); });
                     connection.release();
-                    callback(null, { paymentEventId: eventResult.insertId, reservationId: paymentData.reservationId });
+                    return callback(null, { 
+                      paymentEventId: eventResult.insertId, 
+                      reservationId: paymentData.reservationId,
+                      reservationDate: dates.reservationDate,
+                      flightDate: dates.flightDate
+                    });
+                  });
+                }
+
+                const placeholders = seatIds.map(() => '?').join(',');
+                const updateSeatsSql = `
+                  UPDATE seats SET status = 'AVAILABLE'
+                  WHERE seatId IN (${placeholders}) AND externalFlightId = ? AND status = 'RESERVED'
+                `;
+                connection.query(updateSeatsSql, [...seatIds, externalFlightId], (err5) => {
+                  if (err5) return connection.rollback(() => { connection.release(); callback(err5); });
+
+                  const updateFlightSql = `
+                    UPDATE flights
+                    SET freeSeats = freeSeats + ?, occupiedSeats = occupiedSeats - ?
+                    WHERE externalFlightId = ?
+                  `;
+                  connection.query(updateFlightSql, [seatsCount, seatsCount, externalFlightId], (err6) => {
+                    if (err6) return connection.rollback(() => { connection.release(); callback(err6); });
+
+                    connection.commit((cErr) => {
+                      if (cErr) return connection.rollback(() => { connection.release(); callback(cErr); });
+                      connection.release();
+                      callback(null, { 
+                        paymentEventId: eventResult.insertId, 
+                        reservationId: paymentData.reservationId,
+                        reservationDate: dates.reservationDate,
+                        flightDate: dates.flightDate
+                      });
+                    });
                   });
                 });
               });
