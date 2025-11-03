@@ -48,7 +48,7 @@ class EventsProducerService {
     const correlationId = `corr-${Date.now()}`;
     const idempotencyKey = `reservation-${reservationData.reservationId}-${Date.now()}`;
 
-    // Construir mensaje
+    // Construir mensaje - payload debe ser string JSON
     const message = {
       messageId,
       eventType: 'reservations.reservation.created',
@@ -89,7 +89,7 @@ class EventsProducerService {
     const correlationId = `corr-${Date.now()}`;
     const idempotencyKey = `reservation-updated-${reservationData.reservationId}-${Date.now()}`;
 
-    // Construir mensaje con payload estructurado
+    // Construir mensaje - payload debe ser string JSON
     const message = {
       messageId,
       eventType: 'reservations.reservation.updated',
