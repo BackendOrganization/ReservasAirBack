@@ -24,8 +24,11 @@ exports.confirmPayment = (req, res) => {
             return res.status(400).json({ error: result.message }); // 400
         }
         
+        console.log('[confirmPayment] Result from model:', result);
+        
         // Publicar evento de actualización de reserva
         try {
+            console.log('[confirmPayment] Intentando publicar evento de reserva actualizada...');
             await eventsProducer.sendReservationUpdatedEvent({
                 reservationId: String(reservationId),
                 newStatus: 'PAID',

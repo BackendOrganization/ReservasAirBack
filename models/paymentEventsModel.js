@@ -28,20 +28,34 @@ const safeParseSeatIds = (seatIdRaw) => {
  * Confirm payment (uses simple queries, no long transaction)
  */
 const confirmPayment = (paymentStatus, reservationId, externalUserId, callback) => {
+  console.log('[confirmPayment MODEL] Iniciando con:', { paymentStatus, reservationId, externalUserId });
   // Solo permitir confirmación si la reserva NO está en estado PAID
   const checkReservationQuery = `SELECT status FROM reservations WHERE reservationId = ? LIMIT 1`;
+  console.log('[confirmPayment MODEL] Ejecutando query:', checkReservationQuery, 'con reservationId:', reservationId);
   db.query(checkReservationQuery, [reservationId], (errRes, resRows) => {
-    if (errRes) return callback(errRes);
-    if (!resRows[0]) return callback(null, { success: false, message: 'Reservation not found.' });
+    console.log('[confirmPayment MODEL] Callback de query ejecutado. Error:', errRes, 'Rows:', resRows);
+    if (errRes) {
+      console.log('[confirmPayment MODEL] Error checking reservation:', errRes);
+      return callback(errRes);
+    }
+    if (!resRows[0]) {
+      console.log('[confirmPayment MODEL] Reservation not found');
+      return callback(null, { success: false, message: 'Reservation not found.' });
+    }
     if (resRows[0].status === 'PAID') {
+      console.log('[confirmPayment MODEL] Already PAID');
       return callback(null, { success: false, message: 'Payment already confirmed for this reservation.' });
     }
+    console.log('[confirmPayment MODEL] Reservation status:', resRows[0].status);
     function continueConfirm() {
       const getPendingEventQuery = `SELECT amount FROM paymentEvents WHERE reservationId = ? AND externalUserId = ? AND paymentStatus = 'PENDING' LIMIT 1`;
       db.query(getPendingEventQuery, [reservationId, externalUserId], (err, rows) => {
         console.log('[confirmPayment] Resultado SQL:', rows);
         if (err) return callback(err);
-        if (!rows[0]) return callback(null, { success: false, message: 'No pending payment event found.' });
+        if (!rows[0]) {
+          console.log('[confirmPayment MODEL] No pending payment event found');
+          return callback(null, { success: false, message: 'No pending payment event found.' });
+        }
         const amount = rows[0].amount;
 
         db.getConnection((connErr, connection) => {
