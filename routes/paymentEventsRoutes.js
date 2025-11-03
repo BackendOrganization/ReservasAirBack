@@ -9,4 +9,7 @@ router.post('/payment/cancel', paymentEventsController.cancelPayment);
 // Nuevo endpoint para marcar pago como fallido y crear evento
 router.post('/payment/fail', paymentEventsController.failPayment);
 
+// Endpoint GET unificado para notificaciones
+router.get('/payment/notify/:reservationId', paymentEventsController.notifyPaymentStatus);
+
 module.exports = router;

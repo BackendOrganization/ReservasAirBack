@@ -101,3 +101,43 @@ exports.failPayment = (req, res) => {
         res.status(201).json({ message: 'Payment event created and reservation marked as FAILED', ...result }); // 201
     });
 };
+
+// Endpoint GET para consultar el estado de pago de una reserva
+// GET /payment/notify/:reservationId
+// Devuelve: { reservationId: "123", success: true } si PAID
+// Devuelve: { reservationId: "123", success: false } si FAILED
+exports.notifyPaymentStatus = (req, res) => {
+    const reservationId = req.params.reservationId;
+    
+    if (!reservationId) {
+        return res.status(400).json({ error: 'Missing reservationId' });
+    }
+    
+    const db = require('../config/db');
+    const query = 'SELECT status FROM reservations WHERE reservationId = ? LIMIT 1';
+    
+    db.query(query, [reservationId], (err, results) => {
+        if (err) {
+            console.error('[notifyPaymentStatus] Database error:', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+        
+        if (!results || results.length === 0) {
+            return res.status(404).json({ 
+                reservationId: reservationId,
+                success: false,
+                error: 'Reservation not found'
+            });
+        }
+        
+        const status = results[0].status;
+        const success = (status === 'PAID');
+        
+        console.log(`[notifyPaymentStatus] Reservation ${reservationId} status: ${status}, success: ${success}`);
+        
+        return res.status(200).json({ 
+            reservationId: reservationId,
+            success: success
+        });
+    });
+};

@@ -198,7 +198,7 @@ async function runKafkaConsumer() {
           // ==============================================================
           // 💰 EVENTO: PAYMENT UPDATED
           // ==============================================================
-          else if (type === 'payments.payment.updated' || type === 'payments.payment.status_updated') {
+          else if ( type === 'payments.payment.status_updated') {
             console.log('💰 Evento de pago actualizado recibido:', event);
             const paymentEventsController = require('../controllers/paymentEventsController');
             
