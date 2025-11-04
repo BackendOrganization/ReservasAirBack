@@ -37,5 +37,12 @@ app.listen(PORT, async () => {
   console.log(`📚 API Documentation available at http://localhost:${PORT}/api-docs`);
 
   // Ejecutar el consumer de kafkaConsumer.js al iniciar el servidor
-  require('./utils/kafkaConsumer');
+  try {
+    console.log('🔄 Iniciando Kafka consumer...');
+    require('./utils/kafkaConsumer');
+    console.log('✅ Kafka consumer iniciado correctamente');
+  } catch (error) {
+    console.error('❌ Error iniciando Kafka consumer:', error);
+    // No detener el servidor si falla el consumer
+  }
 });

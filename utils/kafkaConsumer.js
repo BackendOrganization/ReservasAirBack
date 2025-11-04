@@ -3,7 +3,8 @@ const { createConsumer } = require('./kafkaInitializer');
 const topics = ['reservations.events'];
 
 async function runKafkaConsumer() {
-  const consumer = await createConsumer({ groupId: 'reservas-air-back-replay-' + Date.now() });
+  // Usar un groupId fijo para mantener el offset entre reinicios
+  const consumer = await createConsumer({ groupId: 'reservas-air-back-consumer' });
 
   for (const topic of topics) {
     await consumer.subscribe({ topic, fromBeginning: true });
@@ -312,9 +313,37 @@ async function runKafkaConsumer() {
   });
 
   console.log('✅ Conectado y escuchando todos los topics en el broker externo. (Ctrl+C para salir)');
+  
+  // Manejo de desconexiones para reconectar automáticamente
+  consumer.on(consumer.events.DISCONNECT, () => {
+    console.warn('⚠️ Consumer desconectado. Intentando reconectar...');
+  });
+
+  consumer.on(consumer.events.CONNECT, () => {
+    console.log('🔗 Consumer reconectado exitosamente');
+  });
 }
 
-runKafkaConsumer().catch(e => {
-  console.error('❌ Error en Kafka:', e);
-  process.exit(1);
-});
+// Iniciar el consumer con manejo de errores y reintentos
+async function startConsumerWithRetry(retries = 5, delay = 5000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      console.log(`🚀 Intento ${i + 1} de iniciar Kafka consumer...`);
+      await runKafkaConsumer();
+      console.log('✅ Kafka consumer en ejecución');
+      break; // Si tiene éxito, salir del loop
+    } catch (e) {
+      console.error(`❌ Error en Kafka (intento ${i + 1}/${retries}):`, e.message);
+      if (i < retries - 1) {
+        console.log(`⏳ Reintentando en ${delay / 1000} segundos...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        console.error('❌ No se pudo iniciar el consumer después de todos los intentos');
+        // No hacer process.exit() para que Railway mantenga el servidor HTTP activo
+      }
+    }
+  }
+}
+
+// Iniciar con reintentos
+startConsumerWithRetry();

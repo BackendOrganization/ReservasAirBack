@@ -141,3 +141,43 @@ exports.notifyPaymentStatus = (req, res) => {
         });
     });
 };
+
+// Endpoint GET para consultar si el pago falló
+// GET /payment/notify/failed/:reservationId
+// Devuelve: { reservationId: "123", success: true } si FAILED
+// Devuelve: { reservationId: "123", success: false } si NO está FAILED
+exports.notifyPaymentFailed = (req, res) => {
+    const reservationId = req.params.reservationId;
+    
+    if (!reservationId) {
+        return res.status(400).json({ error: 'Missing reservationId' });
+    }
+    
+    const db = require('../config/db');
+    const query = 'SELECT status FROM reservations WHERE reservationId = ? LIMIT 1';
+    
+    db.query(query, [reservationId], (err, results) => {
+        if (err) {
+            console.error('[notifyPaymentFailed] Database error:', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+        
+        if (!results || results.length === 0) {
+            return res.status(404).json({ 
+                reservationId: reservationId,
+                success: false,
+                error: 'Reservation not found'
+            });
+        }
+        
+        const status = results[0].status;
+        const success = (status === 'FAILED');
+        
+        console.log(`[notifyPaymentFailed] Reservation ${reservationId} status: ${status}, success: ${success}`);
+        
+        return res.status(200).json({ 
+            reservationId: reservationId,
+            success: success
+        });
+    });
+};
