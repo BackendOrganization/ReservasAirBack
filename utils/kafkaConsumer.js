@@ -253,7 +253,7 @@ async function runKafkaConsumer() {
                 console.log('✅ Confirmando pago vía controller...');
                 paymentEventsController.confirmPayment(req, res);
               } 
-              else if (status === 'FAILED' || status === 'REJECTED') {
+              else if (status === 'FAILED' || status === 'FAILURE' || status === 'REJECTED') {
                 req.body = {
                   paymentStatus: 'FAILED',
                   reservationId: reservationId,
