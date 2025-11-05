@@ -73,14 +73,30 @@ exports.cancelReservation = async (req, res) => {
     }
     
     reservationsModel.cancelReservation(reservationId, async (err, result) => {
-        if (result) {
-            return res.status(200).json(result);
-        }
-        
         if (err) {
             console.error(err);
             return res.status(500).json({ error: 'Error cancelling reservation' }); // 500
         }
+        
+        if (!result || !result.success) {
+            return res.status(400).json(result || { error: 'Failed to cancel reservation' }); // 400
+        }
+        
+        // Publicar evento reservation.updated con PENDING_REFUND
+        try {
+            await eventsProducer.sendReservationUpdatedEvent({
+                reservationId: reservationId,
+                newStatus: 'PENDING_REFUND',
+                reservationDate: result.reservationDate,
+                flightDate: result.flightDate
+            });
+            console.log(`[KAFKA] Event reservation.updated (PENDING_REFUND) published for reservation ${reservationId}`);
+        } catch (eventErr) {
+            console.error('[KAFKA] Error publishing reservation.updated event:', eventErr);
+            // No fallar la respuesta si el evento falla
+        }
+        
+        return res.status(200).json(result);
     });
 };
 
