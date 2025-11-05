@@ -185,21 +185,40 @@ const cancelPayment = (reservationId, externalUserId, callback) => {
 
         const reservation = reservationRows[0];
         console.log('[cancelPayment] Current reservation status:', reservation.status);
-        if (reservation.status !== 'PENDING' && reservation.status !== 'PENDING_REFUND') {
-          console.warn('[cancelPayment] Only PENDING or PENDING_REFUND reservations can be refunded. Current status:', reservation.status);
-          return connection.rollback(() => { connection.release(); callback(null, { success: false, message: 'Only PENDING or PENDING_REFUND reservations can be refunded.' }); });
+        
+        // Si ya está CANCELLED, no hacer nada (idempotente)
+        if (reservation.status === 'CANCELLED') {
+          console.log('[cancelPayment] Reservation already CANCELLED. Skipping.');
+          
+          // Obtener fechas para devolver en respuesta
+          const getDatesQuery = `
+            SELECT r.createdAt as reservationDate, f.flightDate 
+            FROM reservations r 
+            LEFT JOIN flights f ON r.externalFlightId = f.externalFlightId 
+            WHERE r.reservationId = ?
+          `;
+          connection.query(getDatesQuery, [reservationId], (errDates, dateRows) => {
+            connection.release();
+            const dates = dateRows && dateRows[0] ? dateRows[0] : {};
+            return callback(null, { 
+              success: true, 
+              message: 'Reservation already cancelled.',
+              alreadyCancelled: true,
+              reservationDate: dates.reservationDate,
+              flightDate: dates.flightDate
+            });
+          });
+          return;
+        }
+        
+        // Solo permitir cancelar reservas en PENDING_REFUND
+        if (reservation.status !== 'PENDING_REFUND') {
+          console.warn('[cancelPayment] Only PENDING_REFUND reservations can be refunded. Current status:', reservation.status);
+          return connection.rollback(() => { connection.release(); callback(null, { success: false, message: 'Only PENDING_REFUND reservations can be refunded.' }); });
         }
 
-        const checkRefundQuery = `SELECT eventId FROM paymentEvents WHERE reservationId = ? AND paymentStatus = 'REFUND' LIMIT 1`;
-        connection.query(checkRefundQuery, [reservationId], (errCheck, refundRows) => {
-          if (errCheck) { console.error('[cancelPayment] checkRefundQuery error:', errCheck); return connection.rollback(() => { connection.release(); callback(errCheck); }); }
-          if (refundRows.length > 0) {
-            console.warn('[cancelPayment] Refund event already exists for this reservation:', reservationId);
-            return connection.rollback(() => { connection.release(); callback(null, { success: false, message: 'Refund event already exists for this reservation.' }); });
-          }
-
-          const cancelQuery = `UPDATE reservations SET status = 'CANCELLED' WHERE reservationId = ?`;
-          connection.query(cancelQuery, [reservationId], (err2) => {
+        const cancelQuery = `UPDATE reservations SET status = 'CANCELLED' WHERE reservationId = ?`;
+        connection.query(cancelQuery, [reservationId], (err2) => {
             if (err2) { console.error('[cancelPayment] cancelQuery error:', err2); return connection.rollback(() => { connection.release(); callback(err2); }); }
 
             const getReservationQuery = `SELECT seatId, externalFlightId, totalPrice FROM reservations WHERE reservationId = ?`;

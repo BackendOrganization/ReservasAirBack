@@ -29,11 +29,24 @@ exports.confirmPayment = (req, res) => {
         // Publicar evento de actualización de reserva
         try {
             console.log('[confirmPayment] Intentando publicar evento de reserva actualizada...');
+            
+            if (!result.reservationDate || !result.flightDate) {
+                console.error('[KAFKA] Missing dates in confirmPayment result:', { 
+                    reservationDate: result.reservationDate, 
+                    flightDate: result.flightDate 
+                });
+                throw new Error('Missing reservationDate or flightDate in confirmPayment result');
+            }
+            
             await eventsProducer.sendReservationUpdatedEvent({
                 reservationId: String(reservationId),
                 newStatus: 'PAID',
-                reservationDate: result.reservationDate,
-                flightDate: result.flightDate
+                reservationDate: result.reservationDate instanceof Date 
+                    ? result.reservationDate.toISOString() 
+                    : new Date(result.reservationDate).toISOString(),
+                flightDate: result.flightDate instanceof Date 
+                    ? result.flightDate.toISOString() 
+                    : new Date(result.flightDate).toISOString()
             });
             console.log('✅ Reservation updated event published for PAID status');
         } catch (eventError) {
@@ -56,13 +69,27 @@ exports.cancelPayment = (req, res) => {
             return res.status(500).json({ error: 'Error cancelling payment' }); // 500
         }
         
+        console.log('[DEBUG] cancelPayment result:', JSON.stringify(result));
+        
         // Publicar evento de actualización de reserva
         try {
+            if (!result.reservationDate || !result.flightDate) {
+                console.error('[KAFKA] Missing dates in cancelPayment result:', { 
+                    reservationDate: result.reservationDate, 
+                    flightDate: result.flightDate 
+                });
+                throw new Error('Missing reservationDate or flightDate in cancelPayment result');
+            }
+            
             await eventsProducer.sendReservationUpdatedEvent({
                 reservationId: String(reservationId),
                 newStatus: 'CANCELLED',
-                reservationDate: result.reservationDate,
-                flightDate: result.flightDate
+                reservationDate: result.reservationDate instanceof Date 
+                    ? result.reservationDate.toISOString() 
+                    : new Date(result.reservationDate).toISOString(),
+                flightDate: result.flightDate instanceof Date 
+                    ? result.flightDate.toISOString() 
+                    : new Date(result.flightDate).toISOString()
             });
             console.log('✅ Reservation updated event published for CANCELLED status');
         } catch (eventError) {
@@ -84,13 +111,27 @@ exports.failPayment = (req, res) => {
             return res.status(500).json({ error: 'Error processing payment event', details: err }); // 500
         }
         
+        console.log('[DEBUG] failPayment result:', JSON.stringify(result));
+        
         // Publicar evento de actualización de reserva
         try {
+            if (!result.reservationDate || !result.flightDate) {
+                console.error('[KAFKA] Missing dates in failPayment result:', { 
+                    reservationDate: result.reservationDate, 
+                    flightDate: result.flightDate 
+                });
+                throw new Error('Missing reservationDate or flightDate in failPayment result');
+            }
+            
             await eventsProducer.sendReservationUpdatedEvent({
                 reservationId: String(paymentData.reservationId),
                 newStatus: 'FAILED',
-                reservationDate: result.reservationDate,
-                flightDate: result.flightDate
+                reservationDate: result.reservationDate instanceof Date 
+                    ? result.reservationDate.toISOString() 
+                    : new Date(result.reservationDate).toISOString(),
+                flightDate: result.flightDate instanceof Date 
+                    ? result.flightDate.toISOString() 
+                    : new Date(result.flightDate).toISOString()
             });
             console.log('✅ Reservation updated event published for FAILED status');
         } catch (eventError) {
