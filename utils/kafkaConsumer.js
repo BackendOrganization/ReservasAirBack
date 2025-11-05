@@ -262,6 +262,15 @@ async function runKafkaConsumer() {
                 console.log('❌ Marcando pago como fallido vía controller...');
                 paymentEventsController.failPayment(req, res);
               }
+              else if (status === 'REFUND') {
+                req.body = {
+                  paymentStatus: 'REFUND',
+                  reservationId: reservationId,
+                  externalUserId: userId
+                };
+                console.log('💸 Procesando reembolso vía controller...');
+                paymentEventsController.cancelPayment(req, res);
+              }
               else {
                 console.log(`ℹ️ Estado de pago no procesado: ${status}`);
                 resolve(); // Resolver inmediatamente si no se procesa

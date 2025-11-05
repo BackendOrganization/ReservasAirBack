@@ -227,6 +227,28 @@ const cancelReservation = (reservationId, callback) => {
             return callback(null, { success: false, message: 'Reservation does not exist.' });
         }
         const reservation = reservationRows[0];
+        
+        // Si ya está en PENDING_REFUND, no hacer nada (idempotente)
+        if (reservation.status === 'PENDING_REFUND') {
+            // Obtener fecha del vuelo para el evento
+            const getFlightDateQuery = `SELECT flightDate FROM flights WHERE flightId = ?`;
+            db.query(getFlightDateQuery, [reservation.flightId], (err4, flightRows) => {
+                const flightDate = (flightRows && flightRows[0] && flightRows[0].flightDate) 
+                    ? flightRows[0].flightDate 
+                    : reservation.createdAt;
+                
+                return callback(null, { 
+                    success: true, 
+                    message: 'Reservation is already in PENDING_REFUND status.',
+                    alreadyCancelled: true,
+                    reservationDate: reservation.createdAt,
+                    flightDate: flightDate
+                });
+            });
+            return;
+        }
+        
+        // Solo permitir cancelar reservas en PAID
         if (reservation.status !== 'PAID') {
             return callback(null, { success: false, message: 'Only PAID reservations can be cancelled.' });
         }
@@ -240,9 +262,10 @@ const cancelReservation = (reservationId, callback) => {
         }
         const seatsCount = seatIds.length;
 
-    // Actualizar estado de la reserva
-    const cancelQuery = `UPDATE reservations SET status = 'PENDING_REFUND' WHERE reservationId = ?`;
-    db.query(cancelQuery, [reservationId], (err2) => {
+    // Actualizar estado de la reserva (si ya está en PENDING_REFUND, mantenerlo)
+    const newStatus = reservation.status === 'PENDING_REFUND' ? 'PENDING_REFUND' : 'PENDING_REFUND';
+    const cancelQuery = `UPDATE reservations SET status = ? WHERE reservationId = ?`;
+    db.query(cancelQuery, [newStatus, reservationId], (err2) => {
             if (err2) return callback(err2);
 
             // Crear evento PENDING_REFUND
@@ -253,18 +276,21 @@ const cancelReservation = (reservationId, callback) => {
             db.query(pendingEventQuery, [reservationId, reservation.externalUserId, reservation.totalPrice], (err3) => {
                 if (err3) return callback(err3);
                 
-                // Obtener fecha del vuelo para el evento
-                const getFlightDateQuery = `SELECT departureTime FROM flights WHERE flightId = ?`;
+                // Obtener fecha del vuelo para el evento (si no existe, usar la fecha de reserva)
+                const getFlightDateQuery = `SELECT flightDate FROM flights WHERE flightId = ?`;
                 db.query(getFlightDateQuery, [reservation.flightId], (err4, flightRows) => {
-                    if (err4) return callback(err4);
+                    // Si hay error o no hay filas, usar la fecha de creación de la reserva como fallback
+                    const flightDate = (flightRows && flightRows[0] && flightRows[0].flightDate) 
+                        ? flightRows[0].flightDate 
+                        : reservation.createdAt;
                     
                     callback(null, { 
                         success: true, 
                         message: 'Reservation cancelled and refund pending.',
                         seatsCancelled: seatsCount,
                         note: 'Seats remain reserved, counters unchanged',
-                        reservationDate: reservation.reservationDate,
-                        flightDate: flightRows[0] ? flightRows[0].departureTime : null
+                        reservationDate: reservation.createdAt,
+                        flightDate: flightDate
                     });
                 });
             });

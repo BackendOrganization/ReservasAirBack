@@ -82,13 +82,33 @@ exports.cancelReservation = async (req, res) => {
             return res.status(400).json(result || { error: 'Failed to cancel reservation' }); // 400
         }
         
-        // Publicar evento reservation.updated con PENDING_REFUND
+        // Si ya estaba cancelada, devolver éxito sin publicar evento
+        if (result.alreadyCancelled) {
+            console.log(`[INFO] Reservation ${reservationId} is already in PENDING_REFUND status. No event published.`);
+            return res.status(200).json(result);
+        }
+        
+        // Publicar evento reservation.updated con PENDING_REFUND (solo si es nueva cancelación)
         try {
-            await eventsProducer.sendReservationUpdatedEvent({
+            console.log('[DEBUG] Result from model:', JSON.stringify(result));
+            
+            if (!result.reservationDate || !result.flightDate) {
+                console.error('[KAFKA] Missing dates in result:', { 
+                    reservationDate: result.reservationDate, 
+                    flightDate: result.flightDate 
+                });
+                throw new Error('Missing reservationDate or flightDate in model result');
+            }
+            
+            await kafkaProducer.sendReservationUpdatedEvent({
                 reservationId: reservationId,
                 newStatus: 'PENDING_REFUND',
-                reservationDate: result.reservationDate,
-                flightDate: result.flightDate
+                reservationDate: result.reservationDate instanceof Date 
+                    ? result.reservationDate.toISOString() 
+                    : new Date(result.reservationDate).toISOString(),
+                flightDate: result.flightDate instanceof Date 
+                    ? result.flightDate.toISOString() 
+                    : new Date(result.flightDate).toISOString()
             });
             console.log(`[KAFKA] Event reservation.updated (PENDING_REFUND) published for reservation ${reservationId}`);
         } catch (eventErr) {
