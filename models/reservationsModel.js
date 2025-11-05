@@ -252,11 +252,20 @@ const cancelReservation = (reservationId, callback) => {
             `;
             db.query(pendingEventQuery, [reservationId, reservation.externalUserId, reservation.totalPrice], (err3) => {
                 if (err3) return callback(err3);
-                callback(null, { 
-                    success: true, 
-                    message: 'Reservation cancelled and refund pending.',
-                    seatsCancelled: seatsCount,
-                    note: 'Seats remain reserved, counters unchanged'
+                
+                // Obtener fecha del vuelo para el evento
+                const getFlightDateQuery = `SELECT departureTime FROM flights WHERE flightId = ?`;
+                db.query(getFlightDateQuery, [reservation.flightId], (err4, flightRows) => {
+                    if (err4) return callback(err4);
+                    
+                    callback(null, { 
+                        success: true, 
+                        message: 'Reservation cancelled and refund pending.',
+                        seatsCancelled: seatsCount,
+                        note: 'Seats remain reserved, counters unchanged',
+                        reservationDate: reservation.reservationDate,
+                        flightDate: flightRows[0] ? flightRows[0].departureTime : null
+                    });
                 });
             });
         });
