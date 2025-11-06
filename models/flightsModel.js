@@ -173,52 +173,105 @@ const insertFlight = (flightData, callback) => {
 
 // Nuevo método: cancela todas las reservas de un vuelo y crea eventos de pago cancelados
 const cancelReservationsByFlight = (externalFlightId, callback) => {
+    const reservationsModel = require('./reservationsModel');
+    const kafkaProducer = require('../utils/kafkaProducer');
+    
     // ✅ CAMBIO 1: Actualizar estado del vuelo a 'cancelled'
     const updateFlightSql = 'UPDATE flights SET flightStatus = ? WHERE externalFlightId = ?';
     db.query(updateFlightSql, ['cancelled', externalFlightId], (flightErr) => {
         if (flightErr) return callback(flightErr);
 
         const selectSql = `
-            SELECT r.reservationId, r.externalUserId, r.seatId, r.totalPrice
+            SELECT r.reservationId, r.externalUserId, r.seatId, r.totalPrice, r.status, r.createdAt
             FROM reservations r
-            WHERE r.externalFlightId = ? AND r.status != 'CANCELLED'
+            WHERE r.externalFlightId = ? AND r.status != 'CANCELLED' AND r.status != 'PENDING_REFUND'
         `;
-        db.query(selectSql, [externalFlightId], (err, reservations) => {
+        db.query(selectSql, [externalFlightId], async (err, reservations) => {
             if (err) return callback(err);
-            if (reservations.length === 0) return callback(null, { updated: 0, events: [] });
+            if (reservations.length === 0) return callback(null, { updated: 0, paidCancelled: 0, pendingCancelled: 0 });
             
-            const reservationIds = reservations.map(r => r.reservationId);
-            // CAMBIO: ahora el estado es PENDING_REFUND
-            const updateSql = `UPDATE reservations SET status = 'PENDING_REFUND' WHERE reservationId IN (?)`;
-            db.query(updateSql, [reservationIds], (err2) => {
-                if (err2) return callback(err2);
-
-                // Liberar asientos de reservas que estaban en PENDING
-                const pendingReservations = reservations.filter(r => r.status === 'PENDING');
-                if (pendingReservations.length > 0) {
-                    pendingReservations.forEach(r => {
-                        const seatIds = Array.isArray(r.seatId) ? r.seatId : (typeof r.seatId === 'string' ? JSON.parse(r.seatId) : []);
-                        if (seatIds.length > 0) {
-                            const placeholders = seatIds.map(() => '?').join(',');
-                            const updateSeatsSql = `UPDATE seats SET status = 'AVAILABLE' WHERE seatId IN (${placeholders}) AND externalFlightId = ?`;
-                            db.query(updateSeatsSql, [...seatIds, externalFlightId], () => {});
-                        }
+            // Separar reservas PAID y PENDING
+            const paidReservations = reservations.filter(r => r.status === 'PAID');
+            const pendingReservations = reservations.filter(r => r.status === 'PENDING');
+            
+            console.log(`[cancelReservationsByFlight] Total: ${reservations.length}, PAID: ${paidReservations.length}, PENDING: ${pendingReservations.length}`);
+            
+            // Procesar reservas PAID: usar cancelReservation para publicar eventos
+            const paidResults = [];
+            for (const reservation of paidReservations) {
+                try {
+                    await new Promise((resolve, reject) => {
+                        reservationsModel.cancelReservation(reservation.reservationId, async (cancelErr, cancelResult) => {
+                            if (cancelErr) {
+                                console.error(`[cancelReservationsByFlight] Error cancelling PAID reservation ${reservation.reservationId}:`, cancelErr);
+                                return reject(cancelErr);
+                            }
+                            
+                            // Publicar evento de cancelación
+                            if (cancelResult.success && !cancelResult.alreadyCancelled) {
+                                try {
+                                    const flightDate = await new Promise((resolveDate, rejectDate) => {
+                                        db.query('SELECT flightDate FROM flights WHERE externalFlightId = ?', [externalFlightId], (errDate, rows) => {
+                                            if (errDate) return rejectDate(errDate);
+                                            resolveDate(rows[0]?.flightDate || reservation.createdAt);
+                                        });
+                                    });
+                                    
+                                    await kafkaProducer.sendReservationUpdatedEvent({
+                                        reservationId: String(reservation.reservationId),
+                                        newStatus: 'PENDING_REFUND',
+                                        reservationDate: reservation.createdAt,
+                                        flightDate: flightDate
+                                    });
+                                    console.log(`[KAFKA] Event reservation.updated (PENDING_REFUND) published for reservation ${reservation.reservationId} (flight cancelled)`);
+                                } catch (eventErr) {
+                                    console.error(`[KAFKA] Error publishing event for reservation ${reservation.reservationId}:`, eventErr);
+                                }
+                            }
+                            
+                            paidResults.push({ reservationId: reservation.reservationId, success: true });
+                            resolve();
+                        });
                     });
+                } catch (err) {
+                    console.error(`[cancelReservationsByFlight] Failed to cancel PAID reservation ${reservation.reservationId}`);
                 }
-
-                const events = [];
-                let pending = reservations.length;
-                reservations.forEach(r => {
-                    // El evento de pago sigue igual
-                    const eventSql = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'PENDING_REFUND', ?)`;
-                    db.query(eventSql, [r.reservationId, r.externalUserId, r.totalPrice], (err3, result) => {
-                        if (err3) return callback(err3);
-                        events.push({ reservationId: r.reservationId, eventId: result.insertId });
-                        pending--;
-                        if (pending === 0) callback(null, { updated: reservations.length, events });
+            }
+            
+            // Procesar reservas PENDING: actualizar directamente y liberar asientos (no necesitan evento de pago)
+            if (pendingReservations.length > 0) {
+                const pendingIds = pendingReservations.map(r => r.reservationId);
+                const updatePendingSql = `UPDATE reservations SET status = 'CANCELLED' WHERE reservationId IN (?)`;
+                db.query(updatePendingSql, [pendingIds], (err2) => {
+                    if (err2) {
+                        console.error('[cancelReservationsByFlight] Error updating PENDING reservations:', err2);
+                    } else {
+                        // Liberar asientos de reservas PENDING
+                        pendingReservations.forEach(r => {
+                            const seatIds = Array.isArray(r.seatId) ? r.seatId : (typeof r.seatId === 'string' ? JSON.parse(r.seatId) : []);
+                            if (seatIds.length > 0) {
+                                const placeholders = seatIds.map(() => '?').join(',');
+                                const updateSeatsSql = `UPDATE seats SET status = 'AVAILABLE' WHERE seatId IN (${placeholders}) AND externalFlightId = ?`;
+                                db.query(updateSeatsSql, [...seatIds, externalFlightId], () => {});
+                            }
+                        });
+                    }
+                    
+                    callback(null, { 
+                        updated: reservations.length,
+                        paidCancelled: paidReservations.length,
+                        pendingCancelled: pendingReservations.length,
+                        message: `Flight cancelled. ${paidReservations.length} PAID reservations moved to PENDING_REFUND with events. ${pendingReservations.length} PENDING reservations cancelled and seats released.`
                     });
                 });
-            });
+            } else {
+                callback(null, { 
+                    updated: reservations.length,
+                    paidCancelled: paidReservations.length,
+                    pendingCancelled: 0,
+                    message: `Flight cancelled. ${paidReservations.length} PAID reservations moved to PENDING_REFUND with events.`
+                });
+            }
         });
     });
 };
