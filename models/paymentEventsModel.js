@@ -219,10 +219,10 @@ const cancelPayment = (reservationId, externalUserId, callback) => {
 
         const cancelQuery = `UPDATE reservations SET status = 'CANCELLED' WHERE reservationId = ?`;
         connection.query(cancelQuery, [reservationId], (err2) => {
-            if (err2) { console.error('[cancelPayment] cancelQuery error:', err2); return connection.rollback(() => { connection.release(); callback(err2); }); }
+          if (err2) { console.error('[cancelPayment] cancelQuery error:', err2); return connection.rollback(() => { connection.release(); callback(err2); }); }
 
-            const getReservationQuery = `SELECT seatId, externalFlightId, totalPrice FROM reservations WHERE reservationId = ?`;
-            connection.query(getReservationQuery, [reservationId], (err3, rows) => {
+          const getReservationQuery = `SELECT seatId, externalFlightId, totalPrice FROM reservations WHERE reservationId = ?`;
+          connection.query(getReservationQuery, [reservationId], (err3, rows) => {
               if (err3) { console.error('[cancelPayment] getReservationQuery error:', err3); return connection.rollback(() => { connection.release(); callback(err3); }); }
               if (!rows[0]) { console.warn('[cancelPayment] Reservation not found after cancel:', reservationId); return connection.rollback(() => { connection.release(); callback(null, { success: false, message: 'Reservation not found.' }); }); }
 
@@ -295,8 +295,7 @@ const cancelPayment = (reservationId, externalUserId, callback) => {
         });
       });
     });
-  });
-};
+  };
 
 /**
  * Create FAILED payment event and mark reservation as FAILED (transactional)
