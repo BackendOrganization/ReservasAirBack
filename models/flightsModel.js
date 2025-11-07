@@ -184,7 +184,7 @@ const cancelReservationsByFlight = (externalFlightId, callback) => {
         const selectSql = `
             SELECT r.reservationId, r.externalUserId, r.seatId, r.totalPrice, r.status, r.createdAt
             FROM reservations r
-            WHERE r.externalFlightId = ? AND r.status != 'CANCELLED' AND r.status != 'PENDING_REFUND'
+            WHERE r.externalFlightId = ? AND r.status != 'CANCELLED' AND r.status != 'PENDING_REFUND' AND r.status != 'FAILED'
         `;
         db.query(selectSql, [externalFlightId], async (err, reservations) => {
             if (err) return callback(err);
