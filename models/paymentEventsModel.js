@@ -184,23 +184,37 @@ const cancelPayment = (reservationId, externalUserId, callback) => {
         }
 
         const reservation = reservationRows[0];
-        console.log('[cancelPayment] Current reservation status:', reservation.status);
+        console.log('[cancelPayment] ✅ Found reservation:', { 
+          reservationId: reservation.reservationId, 
+          status: reservation.status,
+          externalUserId: reservation.externalUserId,
+          seatId: reservation.seatId
+        });
+        
         if (reservation.status !== 'PENDING_REFUND') {
-          console.warn('[cancelPayment] Only PENDING_REFUND reservations can be refunded. Current status:', reservation.status);
+          console.warn('[cancelPayment] ❌ Only PENDING_REFUND reservations can be refunded. Current status:', reservation.status);
           return connection.rollback(() => { connection.release(); callback(null, { success: false, message: 'Only PENDING_REFUND reservations can be refunded.' }); });
         }
 
+        console.log('[cancelPayment] ✅ Status is PENDING_REFUND, checking for existing refund event...');
         const checkRefundQuery = `SELECT eventId FROM paymentEvents WHERE reservationId = ? AND paymentStatus = 'REFUND' LIMIT 1`;
         connection.query(checkRefundQuery, [reservationId], (errCheck, refundRows) => {
-          if (errCheck) { console.error('[cancelPayment] checkRefundQuery error:', errCheck); return connection.rollback(() => { connection.release(); callback(errCheck); }); }
+          if (errCheck) { console.error('[cancelPayment] ❌ checkRefundQuery error:', errCheck); return connection.rollback(() => { connection.release(); callback(errCheck); }); }
+          
           if (refundRows.length > 0) {
-            console.warn('[cancelPayment] Refund event already exists for this reservation:', reservationId);
+            console.warn('[cancelPayment] ⚠️ Refund event already exists for this reservation:', reservationId);
             return connection.rollback(() => { connection.release(); callback(null, { success: false, message: 'Refund event already exists for this reservation.' }); });
           }
 
+          console.log('[cancelPayment] ✅ No existing refund, proceeding to update status to CANCELLED...');
           const cancelQuery = `UPDATE reservations SET status = 'CANCELLED' WHERE reservationId = ?`;
-          connection.query(cancelQuery, [reservationId], (err2) => {
-            if (err2) { console.error('[cancelPayment] cancelQuery error:', err2); return connection.rollback(() => { connection.release(); callback(err2); }); }
+          connection.query(cancelQuery, [reservationId], (err2, updateResult) => {
+            if (err2) { 
+              console.error('[cancelPayment] ❌ cancelQuery error:', err2); 
+              return connection.rollback(() => { connection.release(); callback(err2); }); 
+            }
+            
+            console.log('[cancelPayment] ✅ Status updated to CANCELLED. Affected rows:', updateResult.affectedRows);
 
             const getReservationQuery = `SELECT seatId, externalFlightId, totalPrice FROM reservations WHERE reservationId = ?`;
             connection.query(getReservationQuery, [reservationId], (err3, rows) => {
@@ -240,25 +254,42 @@ const cancelPayment = (reservationId, externalUserId, callback) => {
                   }
 
                   const placeholders = seatIds.map(() => '?').join(',');
+                  console.log('[cancelPayment] 🪑 Releasing seats:', seatIds);
                   const releaseSeatsQuery = `
                     UPDATE seats SET status = 'AVAILABLE'
                     WHERE externalFlightId = ? AND seatId IN (${placeholders}) AND status IN ('RESERVED','CONFIRMED')
                   `;
-                  connection.query(releaseSeatsQuery, [externalFlightId, ...seatIds], (err6) => {
-                    if (err6) { console.error('[cancelPayment] releaseSeatsQuery error:', err6); return connection.rollback(() => { connection.release(); callback(err6); }); }
+                  connection.query(releaseSeatsQuery, [externalFlightId, ...seatIds], (err6, seatsResult) => {
+                    if (err6) { 
+                      console.error('[cancelPayment] ❌ releaseSeatsQuery error:', err6); 
+                      return connection.rollback(() => { connection.release(); callback(err6); }); 
+                    }
+                    
+                    console.log('[cancelPayment] ✅ Seats released. Affected rows:', seatsResult.affectedRows);
 
                     const seatsCount = seatIds.length;
+                    console.log('[cancelPayment] ✈️ Updating flight counters: +', seatsCount, 'free seats');
                     const updateFlightSql = `
                       UPDATE flights
                       SET freeSeats = freeSeats + ?, occupiedSeats = occupiedSeats - ?
                       WHERE externalFlightId = ?
                     `;
-                    connection.query(updateFlightSql, [seatsCount, seatsCount, externalFlightId], (err7) => {
-                      if (err7) { console.error('[cancelPayment] updateFlightSql error:', err7); return connection.rollback(() => { connection.release(); callback(err7); }); }
-
-                      console.log('[cancelPayment] All updates done. Committing.');
+                    connection.query(updateFlightSql, [seatsCount, seatsCount, externalFlightId], (err7, flightResult) => {
+                      if (err7) { 
+                        console.error('[cancelPayment] ❌ updateFlightSql error:', err7); 
+                        return connection.rollback(() => { connection.release(); callback(err7); }); 
+                      }
+                      
+                      console.log('[cancelPayment] ✅ Flight counters updated. Affected rows:', flightResult.affectedRows);
+                      console.log('[cancelPayment] 💾 All updates done. Committing transaction...');
+                      
                       connection.commit((errCommit) => {
-                        if (errCommit) { console.error('[cancelPayment] commit error:', errCommit); return connection.rollback(() => { connection.release(); callback(errCommit); }); }
+                        if (errCommit) { 
+                          console.error('[cancelPayment] ❌ commit error:', errCommit); 
+                          return connection.rollback(() => { connection.release(); callback(errCommit); }); 
+                        }
+                        
+                        console.log('[cancelPayment] ✅✅✅ Transaction committed successfully! Reservation is now CANCELLED.');
                         connection.release();
                         callback(null, { 
                           success: true, 

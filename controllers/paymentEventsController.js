@@ -47,17 +47,32 @@ exports.confirmPayment = (req, res) => {
 
 exports.cancelPayment = (req, res) => {
     const { reservationId, externalUserId } = req.body;
+    console.log('[cancelPayment] Request body:', req.body);
+    console.log('[cancelPayment] Extracted values:', { reservationId, externalUserId });
+    
     if (!reservationId || !externalUserId) {
+        console.error('[cancelPayment] ❌ Missing required fields:', { reservationId, externalUserId });
         return res.status(400).json({ error: 'Missing required fields: reservationId, externalUserId' }); // 400
     }
+    
+    console.log('[cancelPayment] ✅ Calling model with:', { reservationId, externalUserId });
     paymentEventsModel.cancelPayment(reservationId, externalUserId, async (err, result) => {
         if (err) {
-            console.error(err);
+            console.error('[cancelPayment] ❌ Model error:', err);
             return res.status(500).json({ error: 'Error cancelling payment' }); // 500
+        }
+        
+        console.log('[cancelPayment] ✅ Model result:', result);
+        
+        // Verificar si el modelo retornó success: false
+        if (result && result.success === false) {
+            console.warn('[cancelPayment] ⚠️ Model returned success: false -', result.message);
+            return res.status(400).json({ error: result.message });
         }
         
         // Publicar evento de actualización de reserva
         try {
+            console.log('[cancelPayment] 📤 Publishing reservation.updated event...');
             await eventsProducer.sendReservationUpdatedEvent({
                 reservationId: String(reservationId),
                 newStatus: 'CANCELLED',
