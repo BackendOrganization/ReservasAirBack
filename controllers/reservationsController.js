@@ -51,7 +51,7 @@ exports.createReservation = async (req, res) => {
             await kafkaProducer.sendReservationCreatedHttpEvent({
                 reservationId: String(result.reservationId),
                 userId: String(externalUserId),
-                flightId: String(externalFlightId),
+                flightId: String(result.aircraftModel || externalFlightId),  // 👈 Usar aircraftModel
                 amount: Number(result.totalAmount || result.totalPrice || 0),
                 currency: 'ARS',
                 reservedAt: new Date().toISOString()

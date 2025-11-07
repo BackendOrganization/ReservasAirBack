@@ -197,17 +197,28 @@ const createReservation = (externalUserId, externalFlightId, seatIds, currency, 
                                     // Continuar aunque falle el contador
                                 }
                                 
-                                // Crear evento de pago
-                                const eventoQuery = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
-                                db.query(eventoQuery, [reservationId, externalUserId, totalPrice], (err6) => {
-                                    if (err6) return callback(err6);
-                                    callback(null, { 
-                                        success: true, 
-                                        message: 'All seats reserved successfully.', 
-                                        reservationId, 
-                                        totalPrice,
-                                        seatsReserved: seatsCount,
-                                        currency: 'ARS'
+                                // Consultar aircraftModel del vuelo para el evento
+                                const getFlightQuery = `SELECT aircraftModel FROM flights WHERE externalFlightId = ?`;
+                                db.query(getFlightQuery, [externalFlightId], (err6, flightRows) => {
+                                    if (err6) {
+                                        console.error('Error fetching aircraftModel:', err6);
+                                    }
+                                    
+                                    const aircraftModel = flightRows && flightRows.length > 0 ? flightRows[0].aircraftModel : null;
+                                    
+                                    // Crear evento de pago
+                                    const eventoQuery = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
+                                    db.query(eventoQuery, [reservationId, externalUserId, totalPrice], (err7) => {
+                                        if (err7) return callback(err7);
+                                        callback(null, { 
+                                            success: true, 
+                                            message: 'All seats reserved successfully.', 
+                                            reservationId, 
+                                            totalPrice,
+                                            seatsReserved: seatsCount,
+                                            currency: 'ARS',
+                                            aircraftModel  // 👈 Devolver aircraftModel
+                                        });
                                     });
                                 });
                             });
