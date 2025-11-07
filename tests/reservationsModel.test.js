@@ -1,31 +1,3 @@
-describe.skip('paymentEventsModel', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  test('debería confirmar el pago (camino feliz completo)', (done) => {
-    // Mock del SELECT de reserva
-    db.query.mockImplementation((sql, params, callback) => {
-      if (sql.includes('FROM reservations')) {
-        return callback(null, [{ id: 1, status: 'PENDING' }]); // simula que existe
-      }
-      if (sql.startsWith('UPDATE')) {
-        return callback(null, { affectedRows: 1 }); // simula actualización exitosa
-      }
-      if (sql.includes('INSERT INTO payment_events')) {
-        return callback(null, { insertId: 123 }); // simula creación de evento
-      }
-      return callback(null, []); // default vacío
-    });
-
-    paymentEventsModel.confirmPayment(1, 'user1', (err, result) => {
-      expect(err).toBeNull();
-      expect(result).toEqual({
-        success: true,
-        message: 'Payment confirmed, reservation PAID, seats CONFIRMED, payment event created.',
-      });
-      done();
-    });
-  });
-});
 const db = require('../config/db');
 const reservationsModel = jest.requireActual('../models/reservationsModel');
 
@@ -44,7 +16,8 @@ describe('reservationsModel', () => {
           reservationId: 10,
           totalPrice: 200,
           seatsReserved: 1,
-          currency: 'ARS'
+          currency: 'ARS',
+          aircraftModel: 'B737-800-TEST'  // 👈 Agregar aircraftModel esperado
         });
         done();
       };
@@ -60,7 +33,9 @@ describe('reservationsModel', () => {
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, { affectedRows: 1 }));
       // 5) updateFlightQuery -> update counters
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, {}));
-      // 6) insert payment event
+      // 6) getFlightQuery -> returns aircraftModel
+      db.query.mockImplementationOnce((sql, params, callback) => callback(null, [{ aircraftModel: 'B737-800-TEST' }]));
+      // 7) insert payment event
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, {}));
 
       reservationsModel.createReservation('user1', 'FL123', ['A1'], 'ARS', cb);
