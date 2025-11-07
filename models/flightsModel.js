@@ -334,12 +334,22 @@ const updateFlightFields = (flightData, callback) => {
             if (!rows.length) return callback(new Error('Vuelo no encontrado para actualizar horarios'));
             let origin = rows[0].origin;
             let destination = rows[0].destination;
+            
+            // Asegurar que origin y destination sean objetos válidos
             if (typeof origin === 'string') {
                 try { origin = JSON.parse(origin); } catch (e) { origin = {}; }
             }
+            if (!origin || typeof origin !== 'object') {
+                origin = {};
+            }
+            
             if (typeof destination === 'string') {
                 try { destination = JSON.parse(destination); } catch (e) { destination = {}; }
             }
+            if (!destination || typeof destination !== 'object') {
+                destination = {};
+            }
+            
             // Procesar newDepartureAt
             if (needOrigin) {
                 const depDate = new Date(fieldsToUpdate.newDepartureAt);
