@@ -184,97 +184,49 @@ const cancelReservationsByFlight = (externalFlightId, callback) => {
         const selectSql = `
             SELECT r.reservationId, r.externalUserId, r.seatId, r.totalPrice, r.status, r.createdAt
             FROM reservations r
-            WHERE r.externalFlightId = ? AND r.status != 'CANCELLED' AND r.status != 'PENDING_REFUND' AND r.status != 'FAILED'
+            WHERE r.externalFlightId = ? AND r.status != 'CANCELLED' 
+            AND r.status != 'PENDING_REFUND' AND r.status != 'FAILED'
         `;
+
         db.query(selectSql, [externalFlightId], async (err, reservations) => {
             if (err) return callback(err);
-            if (reservations.length === 0) return callback(null, { updated: 0, paidCancelled: 0, pendingCancelled: 0 });
-            
+            if (reservations.length === 0) {
+                return callback(null, { updated: 0, paidCancelled: 0, pendingCancelled: 0 });
+            }
+
             // Separar reservas PAID y PENDING
             const paidReservations = reservations.filter(r => r.status === 'PAID');
             const pendingReservations = reservations.filter(r => r.status === 'PENDING');
             
             console.log(`[cancelReservationsByFlight] Total: ${reservations.length}, PAID: ${paidReservations.length}, PENDING: ${pendingReservations.length}`);
             
-            // Procesar reservas PAID: usar cancelReservation para publicar eventos
-            const paidResults = [];
-            for (const reservation of paidReservations) {
+            // Procesar reservas PAID reutilizando la lógica de cancelReservation
+            const paidResults = await Promise.all(paidReservations.map(async (reservation) => {
                 try {
-                    await new Promise((resolve, reject) => {
-                        reservationsModel.cancelReservation(reservation.reservationId, async (cancelErr, cancelResult) => {
-                            if (cancelErr) {
-                                console.error(`[cancelReservationsByFlight] Error cancelling PAID reservation ${reservation.reservationId}:`, cancelErr);
-                                return reject(cancelErr);
-                            }
-                            
-                            // Publicar evento de cancelación
-                            if (cancelResult.success && !cancelResult.alreadyCancelled) {
-                                try {
-                                    const flightDate = await new Promise((resolveDate, rejectDate) => {
-                                        db.query('SELECT flightDate FROM flights WHERE externalFlightId = ?', [externalFlightId], (errDate, rows) => {
-                                            if (errDate) return rejectDate(errDate);
-                                            resolveDate(rows[0]?.flightDate || reservation.createdAt);
-                                        });
-                                    });
-                                    
-                                    await kafkaProducer.sendReservationUpdatedEvent({
-                                        reservationId: String(reservation.reservationId),
-                                        newStatus: 'PENDING_REFUND',
-                                        reservationDate: reservation.createdAt,
-                                        flightDate: flightDate
-                                    });
-                                    console.log(`[KAFKA] Event reservation.updated (PENDING_REFUND) published for reservation ${reservation.reservationId} (flight cancelled)`);
-                                } catch (eventErr) {
-                                    console.error(`[KAFKA] Error publishing event for reservation ${reservation.reservationId}:`, eventErr);
-                                }
-                            }
-                            
-                            paidResults.push({ reservationId: reservation.reservationId, success: true });
-                            resolve();
+                    const cancelResult = await new Promise((resolve, reject) => {
+                        reservationsModel.cancelReservation(reservation.reservationId, (cancelErr, result) => {
+                            if (cancelErr) return reject(cancelErr);
+                            resolve(result);
                         });
                     });
-                } catch (err) {
-                    console.error(`[cancelReservationsByFlight] Failed to cancel PAID reservation ${reservation.reservationId}`);
-                }
-            }
-            
-            // Procesar reservas PENDING: actualizar directamente y liberar asientos (no necesitan evento de pago)
-            if (pendingReservations.length > 0) {
-                const pendingIds = pendingReservations.map(r => r.reservationId);
-                const updatePendingSql = `UPDATE reservations SET status = 'CANCELLED' WHERE reservationId IN (?)`;
-                db.query(updatePendingSql, [pendingIds], (err2) => {
-                    if (err2) {
-                        console.error('[cancelReservationsByFlight] Error updating PENDING reservations:', err2);
-                    } else {
-                        // Liberar asientos de reservas PENDING
-                        pendingReservations.forEach(r => {
-                            const seatIds = Array.isArray(r.seatId) ? r.seatId : (typeof r.seatId === 'string' ? JSON.parse(r.seatId) : []);
-                            if (seatIds.length > 0) {
-                                const placeholders = seatIds.map(() => '?').join(',');
-                                const updateSeatsSql = `UPDATE seats SET status = 'AVAILABLE' WHERE seatId IN (${placeholders}) AND externalFlightId = ?`;
-                                db.query(updateSeatsSql, [...seatIds, externalFlightId], () => {});
-                            }
-                        });
+
+                    if (cancelResult.success && !cancelResult.alreadyCancelled) {
+                        console.log(`[cancelReservationsByFlight] Reservation ${reservation.reservationId} moved to PENDING_REFUND.`);
                     }
-                    
-                    callback(null, { 
-                        updated: reservations.length,
-                        paidCancelled: paidReservations.length,
-                        pendingCancelled: pendingReservations.length,
-                        message: `Flight cancelled. ${paidReservations.length} PAID reservations moved to PENDING_REFUND with events. ${pendingReservations.length} PENDING reservations cancelled and seats released.`
-                    });
-                });
-            } else {
-                callback(null, { 
-                    updated: reservations.length,
-                    paidCancelled: paidReservations.length,
-                    pendingCancelled: 0,
-                    message: `Flight cancelled. ${paidReservations.length} PAID reservations moved to PENDING_REFUND with events.`
-                });
-            }
+
+                    return { reservationId: reservation.reservationId, success: true };
+                } catch (err) {
+                    console.error(`[cancelReservationsByFlight] Failed to process reservation ${reservation.reservationId}:`, err);
+                    return { reservationId: reservation.reservationId, success: false, error: err.message };
+                }
+            }));
+
+            // ✅ Callback final después de procesar todas las reservas
+            callback(null, { updated: reservations.length, paidCancelled: paidResults.length, pendingCancelled: pendingReservations.length });
         });
     });
 };
+
 
 // Obtener todos los vuelos
 const getAllFlights = (callback) => {
@@ -304,20 +256,19 @@ const updateFlightToDelayed = (externalFlightId, callback) => {
 // flightData debe incluir flightId y los campos a actualizar
 const updateFlightFields = (flightData, callback) => {
     // Usar aircraftModel como identificador principal
-    // Mapear flightId a aircraftModel si viene en el objeto
     let aircraftModel = flightData.aircraftModel;
     if (!aircraftModel && flightData.flightId) {
         aircraftModel = String(flightData.flightId);
     }
-    // Copia de los campos a actualizar
+
     const fieldsToUpdate = { ...flightData };
-    // Eliminar identificadores del objeto de actualización
     delete fieldsToUpdate.aircraftModel;
     delete fieldsToUpdate.flightId;
+
     if (!aircraftModel || Object.keys(fieldsToUpdate).length === 0) {
         return callback(new Error('aircraftModel y al menos un campo a actualizar son requeridos'));
     }
-    
+
     // ✅ VALIDACIÓN: Verificar si el vuelo está cancelado antes de actualizarlo
     const checkFlightStatusQuery = 'SELECT flightStatus FROM flights WHERE aircraftModel = ?';
     db.query(checkFlightStatusQuery, [aircraftModel], (errCheck, flightRows) => {
@@ -325,134 +276,129 @@ const updateFlightFields = (flightData, callback) => {
         if (!flightRows.length) {
             return callback(new Error('Vuelo no encontrado: ' + aircraftModel));
         }
-        
+
         const currentStatus = flightRows[0].flightStatus;
         const newStatus = fieldsToUpdate.flightStatus || fieldsToUpdate.newStatus;
-        
+
         // ✅ REGLA: No se puede reactivar un vuelo cancelado
         if (currentStatus === 'CANCELLED' && newStatus && newStatus !== 'CANCELLED') {
             console.error(`[updateFlightFields] ❌ Cannot reactivate cancelled flight. Current: ${currentStatus}, Requested: ${newStatus}`);
             return callback(new Error(`Cannot reactivate a cancelled flight. Flight ${aircraftModel} is permanently cancelled.`));
         }
-        
+
         console.log(`[updateFlightFields] ✅ Flight status validation passed. Current: ${currentStatus}, New: ${newStatus || 'no change'}`);
-        
+
         // Continuar con la actualización normal
         proceedWithUpdate();
     });
-    
+
     function proceedWithUpdate() {
-        // Mapear nombres del schema a columnas reales si es necesario
-        const fieldMap = {
-            newStatus: 'flightStatus'
-        };
+        const fieldMap = { newStatus: 'flightStatus' };
         let setClauses = [];
         let values = [];
 
         // Si hay cambios de horario, obtener los JSON actuales y modificarlos
         const updateJsonFields = async (cb) => {
-            let needOrigin = fieldsToUpdate.newDepartureAt !== undefined;
-            let needDestination = fieldsToUpdate.newArrivalAt !== undefined;
+            const needOrigin = fieldsToUpdate.newDepartureAt !== undefined;
+            const needDestination = fieldsToUpdate.newArrivalAt !== undefined;
             if (!needOrigin && !needDestination) return cb();
+
             db.query('SELECT origin, destination, flightDate FROM flights WHERE aircraftModel = ?', [aircraftModel], (err, rows) => {
                 if (err) return callback(err);
                 if (!rows.length) return callback(new Error('Vuelo no encontrado para actualizar horarios'));
+
                 let origin = rows[0].origin;
                 let destination = rows[0].destination;
-                
+
                 // Asegurar que origin y destination sean objetos válidos
                 if (typeof origin === 'string') {
                     try { origin = JSON.parse(origin); } catch (e) { origin = {}; }
                 }
-                if (!origin || typeof origin !== 'object') {
-                    origin = {};
-                }
-                
+                if (!origin || typeof origin !== 'object') origin = {};
+
                 if (typeof destination === 'string') {
                     try { destination = JSON.parse(destination); } catch (e) { destination = {}; }
                 }
-                if (!destination || typeof destination !== 'object') {
-                    destination = {};
-            }
-            
-            // Variables para almacenar las fechas parseadas
-            let depDate = null;
-            let arrDate = null;
-            
-            // Procesar newDepartureAt
-            if (needOrigin) {
-                depDate = new Date(fieldsToUpdate.newDepartureAt);
-                if (!isNaN(depDate)) {
-                    // Actualizar flightDate (columna) con la fecha (YYYY-MM-DD)
-                    const yyyy = depDate.getUTCFullYear();
-                    const mm = String(depDate.getUTCMonth() + 1).padStart(2, '0');
-                    const dd = String(depDate.getUTCDate()).padStart(2, '0');
-                    setClauses.push('flightDate = ?');
-                    values.push(`${yyyy}-${mm}-${dd}`);
-                    // Actualizar origin.time con la hora (HH:mm)
-                    const hh = String(depDate.getUTCHours()).padStart(2, '0');
-                    const min = String(depDate.getUTCMinutes()).padStart(2, '0');
-                    origin.time = `${hh}:${min}`;
-                    setClauses.push('origin = ?');
-                    values.push(JSON.stringify(origin));
-                }
-            }
-            // Procesar newArrivalAt
-            if (needDestination) {
-                arrDate = new Date(fieldsToUpdate.newArrivalAt);
-                if (!isNaN(arrDate)) {
-                    // Actualizar flightDate (columna) con la fecha de llegada (YYYY-MM-DD)
-                    const yyyy = arrDate.getUTCFullYear();
-                    const mm = String(arrDate.getUTCMonth() + 1).padStart(2, '0');
-                    const dd = String(arrDate.getUTCDate()).padStart(2, '0');
-                    setClauses.push('flightDate = ?');
-                    values.push(`${yyyy}-${mm}-${dd}`);
-                    // Actualizar destination.time con la hora (HH:mm)
-                    const hh = String(arrDate.getUTCHours()).padStart(2, '0');
-                    const min = String(arrDate.getUTCMinutes()).padStart(2, '0');
-                    destination.time = `${hh}:${min}`;
-                    setClauses.push('destination = ?');
-                    values.push(JSON.stringify(destination));
-                }
-            }
-            
-            // ✅ RECALCULAR DURATION si ambos horarios están disponibles
-            if (depDate && arrDate && !isNaN(depDate) && !isNaN(arrDate)) {
-                const totalMinutes = Math.round((arrDate - depDate) / 60000);
-                const hours = Math.floor(totalMinutes / 60);
-                const minutes = totalMinutes % 60;
-                const duration = `${hours}h ${minutes.toString().padStart(2, '0')}m`;
-                setClauses.push('duration = ?');
-                values.push(duration);
-                console.log(`[updateFlightFields] ✅ Duration recalculated: ${duration}`);
-            }
-            // Eliminar estos campos del update plano
-            delete fieldsToUpdate.newDepartureAt;
-            delete fieldsToUpdate.newArrivalAt;
-            cb();
-        });
-    };
+                if (!destination || typeof destination !== 'object') destination = {};
 
-    updateJsonFields(() => {
-        // Descartar flightId si está presente
-        if ('flightId' in fieldsToUpdate) {
-            delete fieldsToUpdate.flightId;
-        }
-        // Procesar el resto de los campos (status, etc)
-        for (const [key, value] of Object.entries(fieldsToUpdate)) {
-            const column = fieldMap[key] || key;
-            setClauses.push(`${column} = ?`);
-            values.push(value);
-        }
-        if (setClauses.length === 0) return callback(null, { message: 'No hay campos para actualizar' });
-        const sql = `UPDATE flights SET ${setClauses.join(', ')} WHERE aircraftModel = ?`;
-        values.push(aircraftModel);
-        db.query(sql, values, (err, result) => {
-            if (err) return callback(err);
-            callback(null, result);
+                let depDate = null;
+                let arrDate = null;
+
+                // Procesar newDepartureAt
+                if (needOrigin) {
+                    depDate = new Date(fieldsToUpdate.newDepartureAt);
+                    if (!isNaN(depDate)) {
+                        const yyyy = depDate.getUTCFullYear();
+                        const mm = String(depDate.getUTCMonth() + 1).padStart(2, '0');
+                        const dd = String(depDate.getUTCDate()).padStart(2, '0');
+                        setClauses.push('flightDate = ?');
+                        values.push(`${yyyy}-${mm}-${dd}`);
+
+                        const hh = String(depDate.getUTCHours()).padStart(2, '0');
+                        const min = String(depDate.getUTCMinutes()).padStart(2, '0');
+                        origin.time = `${hh}:${min}`;
+                        setClauses.push('origin = ?');
+                        values.push(JSON.stringify(origin));
+                    }
+                }
+
+                // Procesar newArrivalAt
+                if (needDestination) {
+                    arrDate = new Date(fieldsToUpdate.newArrivalAt);
+                    if (!isNaN(arrDate)) {
+                        const yyyy = arrDate.getUTCFullYear();
+                        const mm = String(arrDate.getUTCMonth() + 1).padStart(2, '0');
+                        const dd = String(arrDate.getUTCDate()).padStart(2, '0');
+                        setClauses.push('flightDate = ?');
+                        values.push(`${yyyy}-${mm}-${dd}`);
+
+                        const hh = String(arrDate.getUTCHours()).padStart(2, '0');
+                        const min = String(arrDate.getUTCMinutes()).padStart(2, '0');
+                        destination.time = `${hh}:${min}`;
+                        setClauses.push('destination = ?');
+                        values.push(JSON.stringify(destination));
+                    }
+                }
+
+                // ✅ RECALCULAR DURATION si ambos horarios están disponibles
+                if (depDate && arrDate && !isNaN(depDate) && !isNaN(arrDate)) {
+                    const totalMinutes = Math.round((arrDate - depDate) / 60000);
+                    const hours = Math.floor(totalMinutes / 60);
+                    const minutes = totalMinutes % 60;
+                    const duration = `${hours}h ${minutes.toString().padStart(2, '0')}m`;
+                    setClauses.push('duration = ?');
+                    values.push(duration);
+                    console.log(`[updateFlightFields] ✅ Duration recalculated: ${duration}`);
+                }
+
+                delete fieldsToUpdate.newDepartureAt;
+                delete fieldsToUpdate.newArrivalAt;
+                cb();
+            });
+        };
+
+        updateJsonFields(() => {
+            if ('flightId' in fieldsToUpdate) delete fieldsToUpdate.flightId;
+
+            for (const [key, value] of Object.entries(fieldsToUpdate)) {
+                const column = fieldMap[key] || key;
+                setClauses.push(`${column} = ?`);
+                values.push(value);
+            }
+
+            if (setClauses.length === 0) {
+                return callback(null, { message: 'No hay campos para actualizar' });
+            }
+
+            const sql = `UPDATE flights SET ${setClauses.join(', ')} WHERE aircraftModel = ?`;
+            values.push(aircraftModel);
+
+            db.query(sql, values, (err, result) => {
+                if (err) return callback(err);
+                callback(null, result);
+            });
         });
-    });
-    } // Cierre de proceedWithUpdate
+    }
 };
 
 // Buscar vuelo por aircraftModel (flightId del evento) y devolver externalFlightId y otros datos relevantes
