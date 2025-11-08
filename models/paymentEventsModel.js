@@ -42,11 +42,19 @@ const confirmPayment = (paymentStatus, reservationId, externalUserId, callback) 
       console.log('[confirmPayment MODEL] Reservation not found');
       return callback(null, { success: false, message: 'Reservation not found.' });
     }
-    if (resRows[0].status === 'PAID') {
-      console.log('[confirmPayment MODEL] Already PAID');
-      return callback(null, { success: false, message: 'Payment already confirmed for this reservation.' });
+    
+    const currentStatus = resRows[0].status;
+    
+    // ✅ VALIDACIÓN: Solo permitir confirmar pagos en reservas PENDING
+    if (currentStatus !== 'PENDING') {
+      console.log(`[confirmPayment MODEL] Cannot confirm payment. Current status: ${currentStatus}. Only PENDING reservations can be paid.`);
+      return callback(null, { 
+        success: false, 
+        message: `Cannot confirm payment for ${currentStatus} reservation. Only PENDING reservations can be paid.` 
+      });
     }
-    console.log('[confirmPayment MODEL] Reservation status:', resRows[0].status);
+    
+    console.log('[confirmPayment MODEL] Reservation status:', currentStatus);
     function continueConfirm() {
       const getPendingEventQuery = `SELECT amount FROM paymentEvents WHERE reservationId = ? AND externalUserId = ? AND paymentStatus = 'PENDING' LIMIT 1`;
       db.query(getPendingEventQuery, [reservationId, externalUserId], (err, rows) => {
@@ -330,12 +338,29 @@ const createPaymentEventAndFailReservation = (paymentData, callback) => {
           return connection.rollback(() => { connection.release(); callback({ message: 'A FAILED payment event already exists for this reservationId.' }); });
         }
 
-        const getReservationSql = `SELECT totalPrice, seatId, externalFlightId FROM reservations WHERE reservationId = ?`;
+        const getReservationSql = `SELECT totalPrice, seatId, externalFlightId, status FROM reservations WHERE reservationId = ?`;
         connection.query(getReservationSql, [paymentData.reservationId], (err2, rows) => {
           if (err2) return connection.rollback(() => { connection.release(); callback(err2); });
-          const amount = rows[0] ? rows[0].totalPrice : 0;
-          const seatIdRaw = rows[0] ? rows[0].seatId : null;
-          const externalFlightId = rows[0] ? rows[0].externalFlightId : null;
+          if (!rows[0]) return connection.rollback(() => { connection.release(); callback(null, { success: false, message: 'Reservation not found.' }); });
+          
+          const amount = rows[0].totalPrice;
+          const seatIdRaw = rows[0].seatId;
+          const externalFlightId = rows[0].externalFlightId;
+          const currentStatus = rows[0].status;
+
+          // Fix 7: Validate that only PENDING reservations can transition to FAILED
+          // Blocks: PAID→FAILED, CANCELLED→FAILED, PENDING_REFUND→FAILED
+          // PENDING_REFUND→FAILED: Refund failures are payment service responsibility
+          if (currentStatus !== 'PENDING') {
+            console.log(`[createPaymentEventAndFailReservation] Cannot fail payment. Current status: ${currentStatus}. Only PENDING reservations can be failed.`);
+            return connection.rollback(() => { 
+              connection.release(); 
+              callback(null, { 
+                success: false, 
+                message: `Cannot fail payment for ${currentStatus} reservation. Only PENDING reservations can be failed.` 
+              }); 
+            });
+          }
 
           const seatIds = safeParseSeatIds(seatIdRaw);
           const seatsCount = seatIds.length;
@@ -347,9 +372,18 @@ const createPaymentEventAndFailReservation = (paymentData, callback) => {
           connection.query(insertEventSql, [paymentData.paymentStatus, paymentData.reservationId, paymentData.externalUserId, amount], (err3, eventResult) => {
             if (err3) return connection.rollback(() => { connection.release(); callback(err3); });
 
-            const updateReservationSql = `UPDATE reservations SET status = 'FAILED' WHERE reservationId = ? AND status != 'FAILED'`;
-            connection.query(updateReservationSql, [paymentData.reservationId], (err4) => {
+            const updateReservationSql = `UPDATE reservations SET status = 'FAILED' WHERE reservationId = ? AND status = 'PENDING'`;
+            connection.query(updateReservationSql, [paymentData.reservationId], (err4, updateResult) => {
               if (err4) return connection.rollback(() => { connection.release(); callback(err4); });
+              
+              // Verificar que se actualizó la reserva
+              if (updateResult.affectedRows === 0) {
+                console.warn('[createPaymentEventAndFailReservation] Reservation status was not PENDING, update failed');
+                return connection.rollback(() => { 
+                  connection.release(); 
+                  callback(null, { success: false, message: 'Reservation is not in PENDING status.' }); 
+                });
+              }
 
               // Obtener fechas para el evento
               const getDatesQuery = `

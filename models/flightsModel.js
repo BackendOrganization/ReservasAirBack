@@ -178,7 +178,7 @@ const cancelReservationsByFlight = (externalFlightId, callback) => {
     
     // ✅ CAMBIO 1: Actualizar estado del vuelo a 'cancelled'
     const updateFlightSql = 'UPDATE flights SET flightStatus = ? WHERE externalFlightId = ?';
-    db.query(updateFlightSql, ['cancelled', externalFlightId], (flightErr) => {
+    db.query(updateFlightSql, ['CANCELLED', externalFlightId], (flightErr) => {
         if (flightErr) return callback(flightErr);
 
         const selectSql = `
@@ -317,37 +317,62 @@ const updateFlightFields = (flightData, callback) => {
     if (!aircraftModel || Object.keys(fieldsToUpdate).length === 0) {
         return callback(new Error('aircraftModel y al menos un campo a actualizar son requeridos'));
     }
-    // Mapear nombres del schema a columnas reales si es necesario
-    const fieldMap = {
-        newStatus: 'flightStatus'
-    };
-    let setClauses = [];
-    let values = [];
+    
+    // ✅ VALIDACIÓN: Verificar si el vuelo está cancelado antes de actualizarlo
+    const checkFlightStatusQuery = 'SELECT flightStatus FROM flights WHERE aircraftModel = ?';
+    db.query(checkFlightStatusQuery, [aircraftModel], (errCheck, flightRows) => {
+        if (errCheck) return callback(errCheck);
+        if (!flightRows.length) {
+            return callback(new Error('Vuelo no encontrado: ' + aircraftModel));
+        }
+        
+        const currentStatus = flightRows[0].flightStatus;
+        const newStatus = fieldsToUpdate.flightStatus || fieldsToUpdate.newStatus;
+        
+        // ✅ REGLA: No se puede reactivar un vuelo cancelado
+        if (currentStatus === 'CANCELLED' && newStatus && newStatus !== 'CANCELLED') {
+            console.error(`[updateFlightFields] ❌ Cannot reactivate cancelled flight. Current: ${currentStatus}, Requested: ${newStatus}`);
+            return callback(new Error(`Cannot reactivate a cancelled flight. Flight ${aircraftModel} is permanently cancelled.`));
+        }
+        
+        console.log(`[updateFlightFields] ✅ Flight status validation passed. Current: ${currentStatus}, New: ${newStatus || 'no change'}`);
+        
+        // Continuar con la actualización normal
+        proceedWithUpdate();
+    });
+    
+    function proceedWithUpdate() {
+        // Mapear nombres del schema a columnas reales si es necesario
+        const fieldMap = {
+            newStatus: 'flightStatus'
+        };
+        let setClauses = [];
+        let values = [];
 
-    // Si hay cambios de horario, obtener los JSON actuales y modificarlos
-    const updateJsonFields = async (cb) => {
-        let needOrigin = fieldsToUpdate.newDepartureAt !== undefined;
-        let needDestination = fieldsToUpdate.newArrivalAt !== undefined;
-        if (!needOrigin && !needDestination) return cb();
-        db.query('SELECT origin, destination, flightDate FROM flights WHERE aircraftModel = ?', [aircraftModel], (err, rows) => {
-            if (err) return callback(err);
-            if (!rows.length) return callback(new Error('Vuelo no encontrado para actualizar horarios'));
-            let origin = rows[0].origin;
-            let destination = rows[0].destination;
-            
-            // Asegurar que origin y destination sean objetos válidos
-            if (typeof origin === 'string') {
-                try { origin = JSON.parse(origin); } catch (e) { origin = {}; }
-            }
-            if (!origin || typeof origin !== 'object') {
-                origin = {};
-            }
-            
-            if (typeof destination === 'string') {
-                try { destination = JSON.parse(destination); } catch (e) { destination = {}; }
-            }
-            if (!destination || typeof destination !== 'object') {
-                destination = {};
+        // Si hay cambios de horario, obtener los JSON actuales y modificarlos
+        const updateJsonFields = async (cb) => {
+            let needOrigin = fieldsToUpdate.newDepartureAt !== undefined;
+            let needDestination = fieldsToUpdate.newArrivalAt !== undefined;
+            if (!needOrigin && !needDestination) return cb();
+            db.query('SELECT origin, destination, flightDate FROM flights WHERE aircraftModel = ?', [aircraftModel], (err, rows) => {
+                if (err) return callback(err);
+                if (!rows.length) return callback(new Error('Vuelo no encontrado para actualizar horarios'));
+                let origin = rows[0].origin;
+                let destination = rows[0].destination;
+                
+                // Asegurar que origin y destination sean objetos válidos
+                if (typeof origin === 'string') {
+                    try { origin = JSON.parse(origin); } catch (e) { origin = {}; }
+                }
+                if (!origin || typeof origin !== 'object') {
+                    origin = {};
+                }
+                
+                if (typeof destination === 'string') {
+                    try { destination = JSON.parse(destination); } catch (e) { destination = {}; }
+                }
+                if (!destination || typeof destination !== 'object') {
+                    destination = {};
             }
             
             // Procesar newDepartureAt
@@ -412,6 +437,7 @@ const updateFlightFields = (flightData, callback) => {
             callback(null, result);
         });
     });
+    } // Cierre de proceedWithUpdate
 };
 
 // Buscar vuelo por aircraftModel (flightId del evento) y devolver externalFlightId y otros datos relevantes

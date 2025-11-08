@@ -119,33 +119,22 @@ async function runKafkaConsumer() {
               'CANCELADO': 'CANCELLED'
             };
 
-            // Mapeo correcto de campos para update
-            let mappedPayload = {};
-            if (payload.flightId) {
-              mappedPayload.aircraftModel = String(payload.flightId);
-            }
-            if (payload.newStatus) {
-              // Mapear a flightStatus y normalizar
-              const normalizeStatus = (s) => (s && statusMap[s.toUpperCase()]) || s;
-              mappedPayload.flightStatus = normalizeStatus(payload.newStatus);
-            }
-            if (payload.newDepartureAt) {
-              mappedPayload.newDepartureAt = payload.newDepartureAt;
-            }
-            if (payload.newArrivalAt) {
-              mappedPayload.newArrivalAt = payload.newArrivalAt;
-            }
+            // Mapeo para determinar si es cancelación
+            const normalizeStatus = (s) => (s && statusMap[s.toUpperCase()]) || s;
+            const mappedStatus = payload.newStatus ? normalizeStatus(payload.newStatus) : null;
 
             // Si el vuelo fue cancelado
-            if (mappedPayload.flightStatus && mappedPayload.flightStatus === 'CANCELLED') {
-              const cancelReq = { params: { aircraftModel: mappedPayload.aircraftModel } };
+            if (mappedStatus === 'CANCELLED') {
+              const aircraftModel = String(payload.flightId);
+              const cancelReq = { params: { aircraftModel } };
               const cancelRes = {
                 status: (code) => ({ json: (obj) => console.log(`[CancelFlight][${code}]`, obj) }),
                 json: (obj) => console.log('[CancelFlight][json]', obj),
               };
               flightsController.cancelFlightReservations(cancelReq, cancelRes);
             } else {
-              const updateReq = { body: mappedPayload };
+              // Pasar el payload original al controller, él hará el mapeo
+              const updateReq = { body: payload };
               const updateRes = {
                 status: (code) => ({ json: (obj) => console.log(`[UpdateFlight][${code}]`, obj) }),
                 json: (obj) => console.log('[UpdateFlight][json]', obj),

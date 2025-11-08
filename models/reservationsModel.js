@@ -117,118 +117,163 @@ const createReservation = (externalUserId, externalFlightId, seatIds, currency, 
         return callback({ success: false, message: 'seatIds must be a non-empty array.' });
     }
 
-    const placeholders = seatIds.map(() => '?').join(',');
-    const seatsCount = seatIds.length; // ✅ Cantidad de asientos a reservar
-    
-    // Verificar que no estén ocupados
-    const checkQuery = `
-        SELECT seatId, status FROM seats 
-        WHERE seatId IN (${placeholders}) AND externalFlightId = ? AND (status = 'RESERVED' OR status = 'CONFIRMED')
-    `;
-    db.query(checkQuery, [...seatIds, externalFlightId], (err, rows) => {
-        if (err) return callback(err);
-        if (rows.length > 0) {
+    // ✅ VALIDACIÓN 1: Verificar que el vuelo exista y NO esté cancelado
+    const checkFlightQuery = `SELECT flightStatus FROM flights WHERE externalFlightId = ?`;
+    db.query(checkFlightQuery, [externalFlightId], (errFlight, flightRows) => {
+        if (errFlight) return callback(errFlight);
+
+        if (!flightRows || flightRows.length === 0) {
+            console.error(`[createReservation] ❌ Flight not found: ${externalFlightId}`);
             return callback(null, { 
                 success: false, 
-                message: 'One or more seats are already taken.', 
-                takenSeats: rows.map(r => r.seatId) 
+                message: 'Flight not found.' 
             });
         }
 
-        // Verificar que todos estén disponibles
-        const availableQuery = `
-            SELECT seatId, price FROM seats 
-            WHERE seatId IN (${placeholders}) AND externalFlightId = ? AND status = 'AVAILABLE'
+        const flightStatus = flightRows[0].flightStatus;
+
+        if (flightStatus === 'CANCELLED') {
+            console.error(`[createReservation] ❌ Cannot create reservation on cancelled flight: ${externalFlightId}`);
+            return callback(null, { 
+                success: false, 
+                message: 'Cannot create reservation on a cancelled flight.' 
+            });
+        }
+
+        console.log(`[createReservation] ✅ Flight status validated: ${flightStatus}`);
+
+        // Continuar con la creación de la reserva
+        proceedWithReservation();
+    }); // ✅ Cierre del db.query(checkFlightQuery)
+
+    function proceedWithReservation() {
+        const placeholders = seatIds.map(() => '?').join(',');
+        const seatsCount = seatIds.length;
+
+        // Verificar que no estén ocupados
+        const checkQuery = `
+            SELECT seatId, status FROM seats 
+            WHERE seatId IN (${placeholders}) AND externalFlightId = ? 
+            AND (status = 'RESERVED' OR status = 'CONFIRMED')
         `;
-        db.query(availableQuery, [...seatIds, externalFlightId], (err2, availableRows) => {
-            if (err2) return callback(err2);
-            const availableSeatIds = availableRows.map(r => r.seatId);
-            if (availableSeatIds.length !== seatIds.length) {
-                const notAvailable = seatIds.filter(id => !availableSeatIds.includes(id));
+        db.query(checkQuery, [...seatIds, externalFlightId], (err, rows) => {
+            if (err) return callback(err);
+            if (rows.length > 0) {
                 return callback(null, { 
                     success: false, 
-                    message: `Seat(s) ${notAvailable.join(', ')} are not available or do not exist.` 
+                    message: 'One or more seats are already taken.', 
+                    takenSeats: rows.map(r => r.seatId) 
                 });
             }
 
-            // Calcular precio total
-            const totalPrice = availableRows.reduce((sum, seat) => sum + Number(seat.price), 0);
+            // Verificar que todos estén disponibles
+            const availableQuery = `
+                SELECT seatId, price FROM seats 
+                WHERE seatId IN (${placeholders}) AND externalFlightId = ? AND status = 'AVAILABLE'
+            `;
+            db.query(availableQuery, [...seatIds, externalFlightId], (err2, availableRows) => {
+                if (err2) return callback(err2);
+                const availableSeatIds = availableRows.map(r => r.seatId);
+                if (availableSeatIds.length !== seatIds.length) {
+                    const notAvailable = seatIds.filter(id => !availableSeatIds.includes(id));
+                    return callback(null, { 
+                        success: false, 
+                        message: `Seat(s) ${notAvailable.join(', ')} are not available or do not exist.` 
+                    });
+                }
 
-            let completed = 0;
-            let hasError = false;
-            let reservationId = null;
-            const status = 'PENDING';
-            const seatIdJson = JSON.stringify(seatIds);
-            
-            // Crear la reserva
-            const insertQuery = `INSERT INTO reservations (externalUserId, externalFlightId, seatId, status, totalPrice, currency) VALUES (?, ?, ?, ?, ?, ?)`;
-            db.query(insertQuery, [externalUserId, externalFlightId, seatIdJson, status, totalPrice, 'ARS'], (err3, result) => {
-                if (err3) return callback(err3);
+                // Calcular precio total
+                const totalPrice = availableRows.reduce((sum, seat) => sum + Number(seat.price), 0);
 
-                reservationId = result.insertId;
+                let completed = 0;
+                let hasError = false;
+                let reservationId = null;
+                const status = 'PENDING';
+                const seatIdJson = JSON.stringify(seatIds);
 
-                // Reservar cada asiento
-                seatIds.forEach((seatId) => {
-                    const reserveQuery = `UPDATE seats SET status = 'RESERVED' WHERE seatId = ? AND externalFlightId = ? AND status = 'AVAILABLE'`;
-                    db.query(reserveQuery, [seatId, externalFlightId], (err4, reserveResult) => {
-                        if (hasError) return;
-                        if (err4 || reserveResult.affectedRows === 0) {
-                            hasError = true;
-                            const deleteQuery = `DELETE FROM reservations WHERE reservationId = ?`;
-                            db.query(deleteQuery, [reservationId], () => {
-                                return callback(null, { 
-                                    success: false, 
-                                    message: `Seat ${seatId} could not be reserved.` 
+                // Crear la reserva
+                const insertQuery = `
+                    INSERT INTO reservations (externalUserId, externalFlightId, seatId, status, totalPrice, currency)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                `;
+                db.query(insertQuery, [externalUserId, externalFlightId, seatIdJson, status, totalPrice, 'ARS'], (err3, result) => {
+                    if (err3) return callback(err3);
+
+                    reservationId = result.insertId;
+
+                    // Reservar cada asiento
+                    seatIds.forEach((seatId) => {
+                        const reserveQuery = `
+                            UPDATE seats SET status = 'RESERVED' 
+                            WHERE seatId = ? AND externalFlightId = ? AND status = 'AVAILABLE'
+                        `;
+                        db.query(reserveQuery, [seatId, externalFlightId], (err4, reserveResult) => {
+                            if (hasError) return;
+                            if (err4 || reserveResult.affectedRows === 0) {
+                                hasError = true;
+                                const deleteQuery = `DELETE FROM reservations WHERE reservationId = ?`;
+                                db.query(deleteQuery, [reservationId], () => {
+                                    return callback(null, { 
+                                        success: false, 
+                                        message: `Seat ${seatId} could not be reserved.` 
+                                    });
                                 });
-                            });
-                            return;
-                        }
-                        completed++;
-                        if (completed === seatIds.length && !hasError) {
-                            // ✅ ACTUALIZAR CONTADORES EN FLIGHTS - RESTAR freeSeats Y SUMAR occupiedSeats
-                            const updateFlightQuery = `
-                                UPDATE flights 
-                                SET freeSeats = freeSeats - ?, occupiedSeats = occupiedSeats + ?
-                                WHERE externalFlightId = ?
-                            `;
-                            db.query(updateFlightQuery, [seatsCount, seatsCount, externalFlightId], (err5) => {
-                                if (err5) {
-                                    console.error('Error updating flight counters:', err5);
-                                    // Continuar aunque falle el contador
-                                }
-                                
-                                // Consultar aircraftModel del vuelo para el evento
-                                const getFlightQuery = `SELECT aircraftModel FROM flights WHERE externalFlightId = ?`;
-                                db.query(getFlightQuery, [externalFlightId], (err6, flightRows) => {
-                                    if (err6) {
-                                        console.error('Error fetching aircraftModel:', err6);
+                                return;
+                            }
+
+                            completed++;
+                            if (completed === seatIds.length && !hasError) {
+                                // ✅ ACTUALIZAR CONTADORES EN FLIGHTS
+                                const updateFlightQuery = `
+                                    UPDATE flights 
+                                    SET freeSeats = freeSeats - ?, occupiedSeats = occupiedSeats + ?
+                                    WHERE externalFlightId = ?
+                                `;
+                                db.query(updateFlightQuery, [seatsCount, seatsCount, externalFlightId], (err5) => {
+                                    if (err5) {
+                                        console.error('Error updating flight counters:', err5);
+                                        // Continuar aunque falle el contador
                                     }
-                                    
-                                    const aircraftModel = flightRows && flightRows.length > 0 ? flightRows[0].aircraftModel : null;
-                                    
-                                    // Crear evento de pago
-                                    const eventoQuery = `INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount) VALUES (?, ?, 'PENDING', ?)`;
-                                    db.query(eventoQuery, [reservationId, externalUserId, totalPrice], (err7) => {
-                                        if (err7) return callback(err7);
-                                        callback(null, { 
-                                            success: true, 
-                                            message: 'All seats reserved successfully.', 
-                                            reservationId, 
-                                            totalPrice,
-                                            seatsReserved: seatsCount,
-                                            currency: 'ARS',
-                                            aircraftModel  // 👈 Devolver aircraftModel
+
+                                    // Consultar aircraftModel
+                                    const getFlightQuery = `SELECT aircraftModel FROM flights WHERE externalFlightId = ?`;
+                                    db.query(getFlightQuery, [externalFlightId], (err6, flightRows2) => {
+                                        if (err6) {
+                                            console.error('Error fetching aircraftModel:', err6);
+                                        }
+
+                                        const aircraftModel = flightRows2 && flightRows2.length > 0 
+                                            ? flightRows2[0].aircraftModel 
+                                            : null;
+
+                                        // Crear evento de pago
+                                        const eventoQuery = `
+                                            INSERT INTO paymentEvents (reservationId, externalUserId, paymentStatus, amount)
+                                            VALUES (?, ?, 'PENDING', ?)
+                                        `;
+                                        db.query(eventoQuery, [reservationId, externalUserId, totalPrice], (err7) => {
+                                            if (err7) return callback(err7);
+                                            callback(null, { 
+                                                success: true, 
+                                                message: 'All seats reserved successfully.', 
+                                                reservationId, 
+                                                totalPrice,
+                                                seatsReserved: seatsCount,
+                                                currency: 'ARS',
+                                                aircraftModel
+                                            });
                                         });
                                     });
                                 });
-                            });
-                        }
+                            }
+                        });
                     });
                 });
             });
         });
-    });
-};
+    } // ✅ cierre de proceedWithReservation
+}; // ✅ cierre de createReservation
+
 
 const cancelReservation = (reservationId, callback) => {
     const findReservationQuery = `SELECT * FROM reservations WHERE reservationId = ?`;
@@ -437,8 +482,7 @@ module.exports = {
     cancelReservation,
     changeSeat,
     getReservationsByExternalUserId,
-    getFullReservationsByExternalUserId
-};
+    getFullReservationsByExternalUserId,
+}
 // El método ya valida correctamente la disponibilidad de los asientos.
-// Si el asiento no existe o no está AVAILABLE para ese vuelo, la reserva será rechazada.
-
+// Si el asiento no existe o no está AVAILABLE para ese vuelo, la reserva será rechazada
