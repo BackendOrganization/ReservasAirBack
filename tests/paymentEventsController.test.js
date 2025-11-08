@@ -4,7 +4,13 @@ const paymentEventsModel = require('../models/paymentEventsModel');
 
 jest.mock('../models/paymentEventsModel');
 
-describe.skip('paymentEventsController', () => {
+// Mock kafkaProducer at module level before requiring controller
+jest.mock('../utils/kafkaProducer', () => ({
+    sendEvent: jest.fn().mockResolvedValue(true),
+    sendReservationUpdatedEvent: jest.fn().mockResolvedValue(true)
+}));
+
+describe('paymentEventsController', () => {
     let mockRequest;
     let mockResponse;
 
@@ -21,7 +27,7 @@ describe.skip('paymentEventsController', () => {
     });
 
     describe('confirmPayment', () => {
-    test('debería confirmar pago exitoso', () => {
+    test('debería confirmar pago exitoso', (done) => {
             mockRequest.body = {
                 paymentStatus: 'SUCCESS',
                 reservationId: 1,
@@ -30,9 +36,15 @@ describe.skip('paymentEventsController', () => {
             paymentEventsModel.confirmPayment.mockImplementationOnce((status, resId, userId, callback) => {
                 callback(null, { success: true });
             });
+            
             paymentEventsController.confirmPayment(mockRequest, mockResponse);
-            expect(paymentEventsModel.confirmPayment).toHaveBeenCalledWith('SUCCESS', 1, 'user123', expect.any(Function));
-            expect(mockResponse.json).toHaveBeenCalledWith({ success: true });
+            
+            // Wait for async event publishing
+            setTimeout(() => {
+                expect(paymentEventsModel.confirmPayment).toHaveBeenCalledWith('SUCCESS', 1, 'user123', expect.any(Function));
+                expect(mockResponse.json).toHaveBeenCalledWith({ success: true });
+                done();
+            }, 50);
         });
 
     test('debería retornar status code 400 por falta de campos requeridos', () => {
@@ -61,14 +73,20 @@ describe.skip('paymentEventsController', () => {
     });
 
     describe('cancelPayment', () => {
-    test('debería cancelar el pago exitosamente', () => {
+    test('debería cancelar el pago exitosamente', (done) => {
             mockRequest.body = { reservationId: 1, externalUserId: 'user123' };
             paymentEventsModel.cancelPayment.mockImplementationOnce((resId, userId, callback) => {
                 callback(null, { success: true });
             });
+            
             paymentEventsController.cancelPayment(mockRequest, mockResponse);
-            expect(paymentEventsModel.cancelPayment).toHaveBeenCalledWith(1, 'user123', expect.any(Function));
-            expect(mockResponse.json).toHaveBeenCalledWith({ success: true });
+            
+            // Wait for async event publishing
+            setTimeout(() => {
+                expect(paymentEventsModel.cancelPayment).toHaveBeenCalledWith(1, 'user123', expect.any(Function));
+                expect(mockResponse.json).toHaveBeenCalledWith({ success: true });
+                done();
+            }, 50);
         });
 
     test('debería retornar 400 por falta de datos', () => {
@@ -80,16 +98,22 @@ describe.skip('paymentEventsController', () => {
     });
 
     describe('failPayment', () => {
-    test('debería procesar un pago fallido y marcar el pago como FAILED', () => {
+    test('debería procesar un pago fallido y marcar el pago como FAILED', (done) => {
             const paymentData = { paymentStatus: 'FAILED', reservationId: 1, externalUserId: 'user123' };
             mockRequest.body = paymentData;
             paymentEventsModel.createPaymentEventAndFailReservation.mockImplementationOnce((data, callback) => {
                 callback(null, { paymentEventId: 10, reservationId: 1 });
             });
+            
             paymentEventsController.failPayment(mockRequest, mockResponse);
-            expect(paymentEventsModel.createPaymentEventAndFailReservation).toHaveBeenCalledWith(paymentData, expect.any(Function));
-            expect(mockResponse.status).toHaveBeenCalledWith(201);
-            expect(mockResponse.json).toHaveBeenCalledWith({ message: 'Payment event created and reservation marked as FAILED', paymentEventId: 10, reservationId: 1 });
+            
+            // Wait for async event publishing
+            setTimeout(() => {
+                expect(paymentEventsModel.createPaymentEventAndFailReservation).toHaveBeenCalledWith(paymentData, expect.any(Function));
+                expect(mockResponse.status).toHaveBeenCalledWith(201);
+                expect(mockResponse.json).toHaveBeenCalledWith({ message: 'Payment event created and reservation marked as FAILED', paymentEventId: 10, reservationId: 1 });
+                done();
+            }, 50);
         });
 
     test('debería retornar 400 por falta de datos', () => {
