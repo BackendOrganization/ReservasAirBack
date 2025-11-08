@@ -477,12 +477,107 @@ const getFullReservationsByExternalUserId = (externalUserId, callback) => {
     });
 };
 
+const getReservationsByExternalFlightId = (externalFlightId, callback) => {
+    const sql = `
+        SELECT 
+            r.reservationId,
+            r.externalUserId,
+            r.externalFlightId,
+            r.seatId,
+            r.status,
+            r.createdAt,
+            r.updatedAt,
+            r.totalPrice,
+            f.flightDate,
+            f.aircraftModel,
+            f.origin,
+            f.destination,
+            f.aircraft
+        FROM reservations r
+        LEFT JOIN flights f ON r.externalFlightId = f.externalFlightId
+        WHERE r.externalFlightId = ?
+        AND (r.status = 'PAID' OR r.status = 'CANCELLED')
+    `;
+    db.query(sql, [externalFlightId], async (err, reservations) => {
+        if (err) return callback(err);
+
+        try {
+            const results = await Promise.all(reservations.map(async (reservation) => {
+                let seatIds = [];
+                if (reservation.seatId) {
+                    if (Array.isArray(reservation.seatId)) {
+                        seatIds = reservation.seatId.map(id => Number(id)).filter(id => !isNaN(id));
+                    } else if (typeof reservation.seatId === 'string') {
+                        try {
+                            const parsed = JSON.parse(reservation.seatId);
+                            if (Array.isArray(parsed)) {
+                                seatIds = parsed.map(id => Number(id)).filter(id => !isNaN(id));
+                            } else if (!isNaN(parsed)) {
+                                seatIds = [Number(parsed)];
+                            }
+                        } catch {
+                            const matches = reservation.seatId.match(/\d+/g);
+                            if (matches) {
+                                seatIds = matches.map(id => Number(id)).filter(id => !isNaN(id));
+                            } else if (!isNaN(reservation.seatId)) {
+                                seatIds = [Number(reservation.seatId)];
+                            }
+                        }
+                    } else if (!isNaN(reservation.seatId)) {
+                        seatIds = [Number(reservation.seatId)];
+                    }
+                }
+
+                let seats = [];
+                if (seatIds.length > 0) {
+                    const seatSql = `
+                        SELECT seatId, seatNumber, category AS cabinName, price
+                        FROM seats
+                        WHERE seatId IN (${seatIds.map(() => '?').join(',')}) AND externalFlightId = ?
+                    `;
+                    const seatResult = await db.promise().query(seatSql, [...seatIds, reservation.externalFlightId]);
+                    seats = seatResult[0];
+                }
+
+                let origin = {};
+                let destination = {};
+                try {
+                    origin = typeof reservation.origin === 'string' && reservation.origin.trim().startsWith('{')
+                        ? JSON.parse(reservation.origin)
+                        : reservation.origin || {};
+                } catch {
+                    origin = {};
+                }
+                try {
+                    destination = typeof reservation.destination === 'string' && reservation.destination.trim().startsWith('{')
+                        ? JSON.parse(reservation.destination)
+                        : reservation.destination || {};
+                } catch {
+                    destination = {};
+                }
+
+                return {
+                    ...reservation,
+                    seats,
+                    origin,
+                    destination
+                };
+            }));
+
+            callback(null, results);
+        } catch (processingError) {
+            callback(processingError);
+        }
+    });
+};
+
 module.exports = {
     createReservation,
     cancelReservation,
     changeSeat,
     getReservationsByExternalUserId,
     getFullReservationsByExternalUserId,
+    getReservationsByExternalFlightId
 }
 // El método ya valida correctamente la disponibilidad de los asientos.
 // Si el asiento no existe o no está AVAILABLE para ese vuelo, la reserva será rechazada

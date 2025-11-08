@@ -1,5 +1,6 @@
-
 const flightsModel = require('../models/flightsModel');
+const reservationsController = require('./reservationsController'); // Import the reservations controller
+const reservationsModel = require('../models/reservationsModel'); // Import the updated reservations model
 
 exports.ingestFlight = (req, res) => {
     const flightData = req.body;
@@ -54,7 +55,54 @@ exports.getAllFlights = (req, res) => {
 exports.cancelFlightReservations = (req, res) => {
     const externalFlightId = req.params.externalFlightId;
     const aircraftModel = req.params.aircraftModel;
-    
+
+    // Helper function to cancel all confirmed reservations for a flight
+    const cancelAllReservations = (flightId, res) => {
+        console.log(`Fetching reservations for flightId: ${flightId}`); // Log the flightId
+
+        reservationsModel.getReservationsByExternalFlightId(flightId, (err, reservations) => {
+            if (err) {
+                console.error('Error fetching reservations:', err);
+                return res.status(500).json({ error: 'Error fetching reservations', details: err });
+            }
+
+            console.log(`Reservations fetched:`, reservations); // Log the fetched reservations
+
+            const confirmedReservations = reservations.filter(r => r.status === 'PAID');
+
+            console.log(`Confirmed reservations:`, confirmedReservations); // Log the confirmed reservations
+
+            if (confirmedReservations.length === 0) {
+                return res.status(200).json({ message: 'No confirmed reservations to cancel.' });
+            }
+
+            let completed = 0;
+            let errors = [];
+
+            confirmedReservations.forEach(reservation => {
+                const mockReq = { params: { reservationId: reservation.reservationId } };
+                const mockRes = {
+                    status: (code) => ({
+                        json: (result) => {
+                            if (code >= 400) {
+                                errors.push({ reservationId: reservation.reservationId, error: result });
+                            }
+                            completed++;
+                            if (completed === confirmedReservations.length) {
+                                if (errors.length > 0) {
+                                    return res.status(500).json({ message: 'Some reservations failed to cancel.', errors });
+                                }
+                                res.status(200).json({ message: 'All confirmed reservations cancelled successfully.' });
+                            }
+                        }
+                    })
+                };
+
+                reservationsController.cancelReservation(mockReq, mockRes);
+            });
+        });
+    };
+
     // Si viene aircraftModel (desde eventos), buscar el externalFlightId
     if (aircraftModel && !externalFlightId) {
         flightsModel.getFlightByAircraftModel(aircraftModel, (err, flight) => {
@@ -66,25 +114,13 @@ exports.cancelFlightReservations = (req, res) => {
                     details: err.message 
                 });
             }
-            
-            // Llamar al modelo con el externalFlightId obtenido
-            flightsModel.cancelReservationsByFlight(flight.externalFlightId, (err, result) => {
-                if (err) {
-                    console.error('Error cancelling reservations:', err);
-                    return res.status(500).json({ error: 'Error cancelling reservations', details: err });
-                }
-                res.json({ message: 'Reservations cancelled', aircraftModel, ...result });
-            });
+
+            // Cancelar todas las reservas confirmadas para el vuelo
+            cancelAllReservations(flight.externalFlightId, res);
         });
     } else if (externalFlightId) {
-        // Llamada directa con externalFlightId (REST API)
-        flightsModel.cancelReservationsByFlight(externalFlightId, (err, result) => {
-            if (err) {
-                console.error('Error cancelling reservations:', err);
-                return res.status(500).json({ error: 'Error cancelling reservations', details: err });
-            }
-            res.json({ message: 'Reservations cancelled', ...result });
-        });
+        // Cancelar todas las reservas confirmadas para el vuelo
+        cancelAllReservations(externalFlightId, res);
     } else {
         return res.status(400).json({ error: 'Missing externalFlightId or aircraftModel parameter' });
     }
