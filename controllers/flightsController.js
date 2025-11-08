@@ -90,7 +90,7 @@ exports.cancelFlightReservations = (req, res) => {
     }
 };
 
-// ✅ NUEVO: Cambiar estado del vuelo a DELAYED
+// ✅ NUEVO: Cambiar estado del vuelo a DELAYED usando updateFlightFields con validación
 exports.updateFlightToDelayed = (req, res) => {
     const { aircraftModel } = req.params;
 
@@ -100,35 +100,85 @@ exports.updateFlightToDelayed = (req, res) => {
         });
     }
 
-    flightsModel.updateFlightToDelayed(aircraftModel, (err, result) => {
+    // Usar updateFlightFields para aprovechar la validación de reactivación
+    const flightData = {
+        aircraftModel: aircraftModel,
+        flightId: aircraftModel,
+        flightStatus: 'DELAYED'
+    };
+
+    flightsModel.updateFlightFields(flightData, (err, result) => {
         if (err) {
             console.error('Error updating flight to delayed:', err);
-            if (err.message === 'Flight not found') {
-                return res.status(404).json({ 
-                    error: 'Flight not found',
-                    aircraftModel
-                });
-            }
             return res.status(500).json({ 
-                error: 'Error updating flight status' 
+                success: false,
+                error: 'Error updating flight status',
+                message: err.message || err
             });
         }
-        res.status(200).json(result);
+        res.status(200).json({
+            success: true,
+            message: 'Flight status updated to DELAYED',
+            aircraftModel: aircraftModel,
+            flightStatus: 'DELAYED',
+            result
+        });
     });
 };
 
 // Actualiza cualquier campo del vuelo (status, horarios, etc)
 exports.updateFlightFields = (req, res) => {
-    const flightData = req.body;
-    if (!flightData || !flightData.aircraftModel) {
-        return res.status(400).json({ error: 'Missing required aircraftModel' });
+    let payload = req.body;
+    
+    // Mapeo de status (igual que en kafkaConsumer)
+    const statusMap = {
+        'EN_HORA': 'ONTIME',
+        'ONTIME': 'ONTIME',
+        'DELAYED': 'DELAYED',
+        'DEMORADO': 'DELAYED',
+        'CANCELLED': 'CANCELLED',
+        'CANCELADO': 'CANCELLED'
+    };
+    
+    // Mapear campos del payload al formato del modelo (igual que kafkaConsumer)
+    const flightData = {};
+    
+    if (payload.flightId) {
+        flightData.aircraftModel = String(payload.flightId);
+        flightData.flightId = String(payload.flightId);
+    } else {
+        return res.status(400).json({ 
+            success: false,
+            error: 'Missing required flightId in body' 
+        });
     }
-    // Usar aircraftModel como identificador
-    flightData.flightId = flightData.aircraftModel;
+    
+    if (payload.newStatus) {
+        const normalizeStatus = (s) => (s && statusMap[s.toUpperCase()]) || s;
+        flightData.flightStatus = normalizeStatus(payload.newStatus);
+    }
+    if (payload.newDepartureAt) {
+        flightData.newDepartureAt = payload.newDepartureAt;
+    }
+    if (payload.newArrivalAt) {
+        flightData.newArrivalAt = payload.newArrivalAt;
+    }
+    
     flightsModel.updateFlightFields(flightData, (err, result) => {
         if (err) {
-            return res.status(500).json({ error: 'Error updating flight', details: err });
+            console.error('Error updating flight:', err);
+            return res.status(500).json({ 
+                success: false,
+                error: 'Error updating flight', 
+                message: err.message || err
+            });
         }
-        res.status(200).json({ message: 'Flight updated successfully', result });
+        res.status(200).json({ 
+            success: true,
+            message: 'Flight updated successfully',
+            aircraftModel: flightData.aircraftModel,
+            flightStatus: flightData.flightStatus,
+            result 
+        });
     });
 };

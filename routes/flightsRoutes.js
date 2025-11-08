@@ -15,4 +15,7 @@ router.post('/flights/:externalFlightId/cancel', flightsController.cancelFlightR
 // ✅ NUEVA: Ruta para marcar vuelo como DELAYED
 router.patch('/flights/:externalFlightId/delay', flightsController.updateFlightToDelayed);
 
+// ✅ Ruta para actualizar cualquier campo del vuelo (status, horarios, etc)
+router.put('/flights', flightsController.updateFlightFields);
+
 module.exports = router;
