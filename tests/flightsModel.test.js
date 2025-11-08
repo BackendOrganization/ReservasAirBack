@@ -131,7 +131,7 @@ describe('flightsModel', () => {
       };
 
       const flightData = {
-        aircraftModel: 'B737-800-TEST',  // 👈 Cambiar de flightId a aircraftModel
+        aircraftModel: 'B737-800-TEST',
         newDepartureAt: '2025-10-01T10:30:00Z',
         newArrivalAt: '2025-10-01T14:45:00Z',
         newStatus: 'DELAYED'
@@ -143,9 +143,11 @@ describe('flightsModel', () => {
         flightDate: '2025-10-01' 
       }];
       
-      // Mock para SELECT origin, destination, flightDate
+      // Mock 1: SELECT flightStatus FROM flights WHERE aircraftModel = ? (validation check)
+      db.query.mockImplementationOnce((sql, params, callback) => callback(null, [{ flightStatus: 'ONTIME' }]));
+      // Mock 2: SELECT origin, destination, flightDate FROM flights WHERE aircraftModel = ? (get current JSON data)
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, existingRow));
-      // Mock para UPDATE final
+      // Mock 3: UPDATE flights SET ... WHERE aircraftModel = ? (final update with all fields)
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, { affectedRows: 1 }));
 
       flightsModel.updateFlightFields(flightData, cb);
