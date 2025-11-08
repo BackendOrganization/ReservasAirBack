@@ -17,25 +17,31 @@ describe('reservationsModel', () => {
           totalPrice: 200,
           seatsReserved: 1,
           currency: 'ARS',
-          aircraftModel: 'B737-800-TEST'  // 👈 Agregar aircraftModel esperado
+          aircraftModel: 'B737-800-TEST'
         });
         done();
       };
-      // 1) checkQuery
+      // 1) getFlightQuery -> validates flight exists and get aircraftModel + status
+      db.query.mockImplementationOnce((sql, params, callback) => 
+        callback(null, [{ aircraftModel: 'B737-800-TEST', flightStatus: 'ONTIME' }])
+      );
+      // 2) checkQuery -> check for existing pending reservations
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, []));
-      // 2) availableQuery -> returns available seat with price
+      // 3) availableQuery -> returns available seat with price
       db.query.mockImplementationOnce((sql, params, callback) =>
         callback(null, [{ seatId: 'A1', price: 200 }])
       );
-      // 3) insertQuery -> creates reservation, returns insertId
+      // 4) insertQuery -> creates reservation, returns insertId
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, { insertId: 10 }));
-      // 4) reserveQuery -> reserve the seat
+      // 5) reserveQuery -> reserve the seat
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, { affectedRows: 1 }));
-      // 5) updateFlightQuery -> update counters
+      // 6) updateFlightQuery -> update counters
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, {}));
-      // 6) getFlightQuery -> returns aircraftModel
-      db.query.mockImplementationOnce((sql, params, callback) => callback(null, [{ aircraftModel: 'B737-800-TEST' }]));
-      // 7) insert payment event
+      // 7) getFlightQuery (again) -> get aircraftModel for response
+      db.query.mockImplementationOnce((sql, params, callback) => 
+        callback(null, [{ aircraftModel: 'B737-800-TEST' }])
+      );
+      // 8) insert payment event
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, {}));
 
       reservationsModel.createReservation('user1', 'FL123', ['A1'], 'ARS', cb);
@@ -51,8 +57,13 @@ describe('reservationsModel', () => {
         done();
       };
 
-      //db.query.mockImplementationOnce((sql, params, callback) => callback(null, []));
-      // availableQuery
+      // 1) getFlightQuery -> validates flight exists
+      db.query.mockImplementationOnce((sql, params, callback) => 
+        callback(null, [{ aircraftModel: 'B737-800-TEST', flightStatus: 'ONTIME' }])
+      );
+      // 2) checkQuery -> check for existing pending reservations
+      db.query.mockImplementationOnce((sql, params, callback) => callback(null, []));
+      // 3) availableQuery -> no available seats
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, []));
 
       reservationsModel.createReservation('user1', 'FL123', ['A1'], 'ARS', cb);
@@ -61,22 +72,6 @@ describe('reservationsModel', () => {
 
   describe('cancelReservation', () => {
   test('debería cancelar una reserva pagada y liberar asientos', (done) => {
-    // Mock global para simular que la reserva existe
-    jest.spyOn(db, 'query').mockImplementation((sql, params, callback) => {
-      if (sql.includes('SELECT') && sql.includes('reservations')) {
-        callback(null, [{
-          reservationId: 1,
-          status: 'PAID',
-          seatId: JSON.stringify([1]),
-          externalFlightId: 'FL123',
-          totalPrice: 200,
-          externalUserId: 'user1'
-        }]);
-      } else {
-        callback(null, {});
-      }
-    });
-
     const cb = (err, result) => {
       expect(err).toBeNull();
       expect(result).toEqual({
@@ -87,6 +82,28 @@ describe('reservationsModel', () => {
       });
       done();
     };
+
+    // 1) SELECT reservation data
+    db.query.mockImplementationOnce((sql, params, callback) => {
+      callback(null, [{
+        reservationId: 1,
+        status: 'PAID',
+        seatId: JSON.stringify(['A1']),
+        externalFlightId: 'FL123',
+        totalPrice: 200,
+        externalUserId: 'user1',
+        reservationDate: '2025-01-01T10:00:00Z'
+      }]);
+    });
+    // 2) SELECT flight data for event
+    db.query.mockImplementationOnce((sql, params, callback) => {
+      callback(null, [{
+        flightDate: '2025-12-01T10:00:00Z',
+        aircraftModel: 'B737-800'
+      }]);
+    });
+    // 3) UPDATE reservation status to PENDING_REFUND
+    db.query.mockImplementationOnce((sql, params, callback) => callback(null, { affectedRows: 1 }));
 
     reservationsModel.cancelReservation(1, cb);
   });
@@ -131,23 +148,25 @@ describe('reservationsModel', () => {
         done();
       };
 
-      // Return one reservation with no seatId (to avoid db.promise seat query)
+      // Return array of reservations with no seatId (to avoid db.promise seat query)
       db.query.mockImplementationOnce((sql, params, callback) =>
-        callback(null, [{
-          reservationId: 1,
-          externalUserId: 'user1',
-          externalFlightId: 'FL123',
-          seatId: null,
-          status: 'PAID',
-          totalPrice: 0,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          flightDate: null,
-          aircraftModel: null,
-          origin: null,
-          destination: null,
-          aircraft: null
-        }])
+        callback(null, [
+          {
+            reservationId: 1,
+            externalUserId: 'user1',
+            externalFlightId: 'FL123',
+            seatId: null,
+            status: 'PAID',
+            totalPrice: 0,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            flightDate: null,
+            aircraftModel: null,
+            origin: null,
+            destination: null,
+            aircraft: null
+          }
+        ])
       );
 
       reservationsModel.getReservationsByExternalUserId('user1', cb);
@@ -164,23 +183,25 @@ describe('reservationsModel', () => {
         done();
       };
 
-      // 1) main reservations query
+      // 1) main reservations query - return ARRAY
       db.query.mockImplementationOnce((sql, params, callback) =>
-        callback(null, [{
-          reservationId: 1,
-          externalUserId: 'user1',
-          externalFlightId: 'FL123',
-          seatId: JSON.stringify([1]),
-          status: 'PAID',
-          totalPrice: 200,
-          createdAt: '2025-09-17',
-          updatedAt: '2025-09-17',
-          flightDate: '2025-10-01',
-          aircraftModel: 'A320',
-          origin: JSON.stringify({ code: 'JFK' }),
-          destination: JSON.stringify({ code: 'LAX' }),
-          aircraft: 'A320'
-        }])
+        callback(null, [
+          {
+            reservationId: 1,
+            externalUserId: 'user1',
+            externalFlightId: 'FL123',
+            seatId: JSON.stringify([1]),
+            status: 'PAID',
+            totalPrice: 200,
+            createdAt: '2025-09-17',
+            updatedAt: '2025-09-17',
+            flightDate: '2025-10-01',
+            aircraftModel: 'A320',
+            origin: JSON.stringify({ code: 'JFK' }),
+            destination: JSON.stringify({ code: 'LAX' }),
+            aircraft: 'A320'
+          }
+        ])
       );
 
       // db.promise().query -> return seats
