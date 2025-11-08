@@ -34,6 +34,12 @@ class EventsProducerService {
    * @param {Object} reservationData - Datos de la reserva
    */
   async sendReservationCreatedEvent(reservationData) {
+    // Verificar si reservationId es undefined
+    if (reservationData.reservationId === undefined) {
+      console.warn('❌ Reservation ID is undefined. Event will not be sent.');
+      return;
+    }
+
     // Validar campos obligatorios
     const requiredFields = ['reservationId', 'userId', 'flightId', 'amount', 'currency', 'reservedAt'];
     for (const field of requiredFields) {
