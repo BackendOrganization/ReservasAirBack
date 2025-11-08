@@ -222,7 +222,12 @@ const cancelReservationsByFlight = (externalFlightId, callback) => {
             }));
 
             // ✅ Callback final después de procesar todas las reservas
-            callback(null, { updated: reservations.length, paidCancelled: paidResults.length, pendingCancelled: pendingReservations.length });
+            callback(null, {
+                updated: reservations.length,
+                paidCancelled: paidResults.length,
+                pendingCancelled: pendingReservations.length,
+                message: `${paidResults.length} PAID reservations moved to PENDING_REFUND. ${pendingReservations.length} PENDING reservations cancelled.`
+            });
         });
     });
 };
@@ -244,8 +249,7 @@ const updateFlightToDelayed = (externalFlightId, callback) => {
         }
         callback(null, {
             success: true,
-            message: 'Flight status updated to DELAYED',
-            aircraftModel: externalFlightId,
+            message: 'Estado del vuelo actualizado a DELAYED.',
             flightStatus: 'DELAYED',
             affectedRows: result.affectedRows
         });

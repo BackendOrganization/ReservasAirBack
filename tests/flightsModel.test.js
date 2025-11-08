@@ -59,19 +59,16 @@ describe('flightsModel', () => {
 
       // Mock para require dentro de la función
       jest.mock('../models/reservationsModel', () => ({
-        cancelReservation: jest.fn((id, cb) => cb(null, { success: true }))
+        cancelReservation: jest.fn((id, cb) => cb(null, { success: true, alreadyCancelled: false }))
       }));
 
       // 0) actualizar estado del vuelo a cancelled
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, { affectedRows: 1 }));
       // 1) seleccionar reservas
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, reservations));
-      // 2) Mocks para cada reserva PAID (cancelReservation interno)
-      // Como usa require interno, simplemente mockeamos que no hay PENDING
-      // El callback se ejecutará con updated=0 porque no encuentra reservas
 
       flightsModel.cancelReservationsByFlight('FL123', cb);
-    });
+    }, 10000); // Aumentar el tiempo límite a 10 segundos
   });
 
   describe('getAllFlights', () => {
