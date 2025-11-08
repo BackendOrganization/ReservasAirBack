@@ -375,9 +375,13 @@ const updateFlightFields = (flightData, callback) => {
                     destination = {};
             }
             
+            // Variables para almacenar las fechas parseadas
+            let depDate = null;
+            let arrDate = null;
+            
             // Procesar newDepartureAt
             if (needOrigin) {
-                const depDate = new Date(fieldsToUpdate.newDepartureAt);
+                depDate = new Date(fieldsToUpdate.newDepartureAt);
                 if (!isNaN(depDate)) {
                     // Actualizar flightDate (columna) con la fecha (YYYY-MM-DD)
                     const yyyy = depDate.getUTCFullYear();
@@ -395,7 +399,7 @@ const updateFlightFields = (flightData, callback) => {
             }
             // Procesar newArrivalAt
             if (needDestination) {
-                const arrDate = new Date(fieldsToUpdate.newArrivalAt);
+                arrDate = new Date(fieldsToUpdate.newArrivalAt);
                 if (!isNaN(arrDate)) {
                     // Actualizar flightDate (columna) con la fecha de llegada (YYYY-MM-DD)
                     const yyyy = arrDate.getUTCFullYear();
@@ -410,6 +414,17 @@ const updateFlightFields = (flightData, callback) => {
                     setClauses.push('destination = ?');
                     values.push(JSON.stringify(destination));
                 }
+            }
+            
+            // ✅ RECALCULAR DURATION si ambos horarios están disponibles
+            if (depDate && arrDate && !isNaN(depDate) && !isNaN(arrDate)) {
+                const totalMinutes = Math.round((arrDate - depDate) / 60000);
+                const hours = Math.floor(totalMinutes / 60);
+                const minutes = totalMinutes % 60;
+                const duration = `${hours}h ${minutes.toString().padStart(2, '0')}m`;
+                setClauses.push('duration = ?');
+                values.push(duration);
+                console.log(`[updateFlightFields] ✅ Duration recalculated: ${duration}`);
             }
             // Eliminar estos campos del update plano
             delete fieldsToUpdate.newDepartureAt;

@@ -287,8 +287,8 @@ const cancelReservation = (reservationId, callback) => {
         // Si ya está en PENDING_REFUND, no hacer nada (idempotente)
         if (reservation.status === 'PENDING_REFUND') {
             // Obtener fecha del vuelo para el evento
-            const getFlightDateQuery = `SELECT flightDate FROM flights WHERE flightId = ?`;
-            db.query(getFlightDateQuery, [reservation.flightId], (err4, flightRows) => {
+            const getFlightDateQuery = `SELECT flightDate FROM flights WHERE externalFlightId = ?`;
+            db.query(getFlightDateQuery, [reservation.externalFlightId], (err4, flightRows) => {
                 const flightDate = (flightRows && flightRows[0] && flightRows[0].flightDate) 
                     ? flightRows[0].flightDate 
                     : reservation.createdAt;
@@ -333,8 +333,8 @@ const cancelReservation = (reservationId, callback) => {
                 if (err3) return callback(err3);
                 
                 // Obtener fecha del vuelo para el evento (si no existe, usar la fecha de reserva)
-                const getFlightDateQuery = `SELECT flightDate FROM flights WHERE flightId = ?`;
-                db.query(getFlightDateQuery, [reservation.flightId], (err4, flightRows) => {
+                const getFlightDateQuery = `SELECT flightDate FROM flights WHERE externalFlightId = ?`;
+                db.query(getFlightDateQuery, [reservation.externalFlightId], (err4, flightRows) => {
                     // Si hay error o no hay filas, usar la fecha de creación de la reserva como fallback
                     const flightDate = (flightRows && flightRows[0] && flightRows[0].flightDate) 
                         ? flightRows[0].flightDate 
