@@ -71,19 +71,17 @@ describe('paymentEventsModel', () => {
           .fn()
           // 1) findReservationQuery (FOR UPDATE) - debe retornar PENDING_REFUND
           .mockImplementationOnce((sql, params, cb) => cb(null, [{ reservationId: 1, status: 'PENDING_REFUND', seatId: JSON.stringify([1]), externalFlightId: 'FL123', totalPrice: 200 }]))
-          // 2) checkRefundQuery (SELECT eventId FROM paymentEvents)
-          .mockImplementationOnce((sql, params, cb) => cb(null, []))
-          // 3) cancelQuery (UPDATE reservations SET status = 'CANCELLED')
+          // 2) cancelQuery (UPDATE reservations SET status = 'CANCELLED')
           .mockImplementationOnce((sql, params, cb) => cb(null, { affectedRows: 1 }))
-          // 4) getReservationQuery (SELECT seatId, externalFlightId, totalPrice)
+          // 3) getReservationQuery (SELECT seatId, externalFlightId, totalPrice)
           .mockImplementationOnce((sql, params, cb) => cb(null, [{ seatId: JSON.stringify([1]), externalFlightId: 'FL123', totalPrice: 200 }]))
-          // 5) refundEvent insert (INSERT INTO paymentEvents)
+          // 4) refundEvent insert (INSERT INTO paymentEvents)
           .mockImplementationOnce((sql, params, cb) => cb(null, { insertId: 99 }))
-          // 6) getDatesQuery - retorna fechas
+          // 5) getDatesQuery - retorna fechas
           .mockImplementationOnce((sql, params, cb) => cb(null, [{ reservationDate: '2024-01-01T00:00:00.000Z', flightDate: '2024-02-01' }]))
-          // 7) release seats (UPDATE seats SET status = 'AVAILABLE')
+          // 6) release seats (UPDATE seats SET status = 'AVAILABLE')
           .mockImplementationOnce((sql, params, cb) => cb(null, { affectedRows: 1 }))
-          // 8) update flights counters (UPDATE flights SET freeSeats...)
+          // 7) update flights counters (UPDATE flights SET freeSeats...)
           .mockImplementationOnce((sql, params, cb) => cb(null, { affectedRows: 1 })),
         commit: jest.fn(cb => cb(null)),
         rollback: jest.fn(cb => cb && cb()),
