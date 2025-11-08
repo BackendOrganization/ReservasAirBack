@@ -178,7 +178,7 @@ const cancelReservationsByFlight = (externalFlightId, callback) => {
     
     // ✅ CAMBIO 1: Actualizar estado del vuelo a 'cancelled'
     const updateFlightSql = 'UPDATE flights SET flightStatus = ? WHERE externalFlightId = ?';
-    db.query(updateFlightSql, ['cancelled', externalFlightId], (flightErr) => {
+    db.query(updateFlightSql, ['CANCELLED', externalFlightId], (flightErr) => {
         if (flightErr) return callback(flightErr);
 
         const selectSql = `
