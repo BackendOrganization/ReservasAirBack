@@ -195,6 +195,9 @@ const getCartByUserId = (externalUserId, callback) => {
             FROM flights 
             WHERE externalFlightId IN (${placeholders})
             AND (flightStatus IS NULL OR flightStatus != 'CANCELLED')
+            AND (
+                CONCAT(flightDate, ' ', LPAD(JSON_UNQUOTE(JSON_EXTRACT(destination, '$.time')), 5, '0')) > NOW()
+            )
         `;
         
         db.query(getFlightsSql, flightIds, (err2, flightResults) => {

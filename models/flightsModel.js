@@ -239,7 +239,7 @@ const getAllFlights = (callback) => {
         SELECT * FROM flights 
         WHERE flightStatus != "CANCELLED" 
         AND (
-            STR_TO_DATE(CONCAT(flightDate, ' ', JSON_UNQUOTE(JSON_EXTRACT(destination, '$.time'))), '%Y-%m-%d %H:%i') > NOW()
+            CONCAT(flightDate, ' ', LPAD(JSON_UNQUOTE(JSON_EXTRACT(destination, '$.time')), 5, '0')) > NOW()
         )`;
     db.query(sql, callback);
 };
