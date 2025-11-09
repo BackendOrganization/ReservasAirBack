@@ -1,4 +1,3 @@
-
 const express = require('express');
 const router = express.Router();
 const flightsController = require('../controllers/flightsController.js');
@@ -17,5 +16,8 @@ router.patch('/flights/:externalFlightId/delay', flightsController.updateFlightT
 
 // ✅ Ruta para actualizar cualquier campo del vuelo (status, horarios, etc)
 router.put('/flights', flightsController.updateFlightFields);
+
+// Ruta para verificar si un vuelo está cancelado
+router.get('/flights/:externalFlightId/isCancelled', flightsController.isFlightCancelled);
 
 module.exports = router;

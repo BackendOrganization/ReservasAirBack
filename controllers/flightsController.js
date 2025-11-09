@@ -218,3 +218,26 @@ exports.updateFlightFields = (req, res) => {
         });
     });
 };
+
+// Nuevo método para verificar si un vuelo está cancelado
+exports.isFlightCancelled = (req, res) => {
+    const { externalFlightId } = req.params;
+
+    if (!externalFlightId) {
+        return res.status(400).json({ error: 'Missing required parameter: externalFlightId' });
+    }
+
+    flightsModel.getFlightByExternalFlightId(externalFlightId, (err, flight) => {
+        if (err) {
+            console.error('Error fetching flight:', err);
+            return res.status(500).json({ error: 'Error fetching flight', details: err.message });
+        }
+
+        if (!flight) {
+            return res.status(404).json({ message: 'Flight not found' });
+        }
+
+        const isCancelled = flight.flightStatus === 'CANCELLED';
+        res.status(200).json({ cancelled: isCancelled });
+    });
+};
