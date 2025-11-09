@@ -1,4 +1,5 @@
 const axios = require('axios');
+const db = require('../config/db'); // Import database configuration
 
 // Configuración del broker externo
 const BROKER_URL = 'http://34.172.179.60/events';
@@ -16,6 +17,11 @@ class EventsProducerService {
    */
   async sendEvent(message) {
     try {
+      // Insertar el payload en la tabla eventsProducer
+      const insertSql = 'INSERT INTO eventsProducer (payload) VALUES (?)';
+      await db.promise().query(insertSql, [JSON.stringify(message.payload)]);
+
+      // Enviar el evento al broker externo
       await axios.post(BROKER_URL, message, {
         headers: {
           'Content-Type': 'application/json',
