@@ -92,7 +92,14 @@ async function runKafkaConsumer() {
               duration = null;
             }
 
-   
+            // Verificar si price y currency están presentes
+            const price = payload.price || null;
+            const currency = payload.currency || null;
+
+            if (!price || !currency) {
+              console.warn('⚠️ Flight created event missing price or currency:', { price, currency });
+            }
+
             const flightData = {
               flightNumber: payload.flightNumber,
               origin: parseLocation(payload.origin, originTime),
@@ -101,6 +108,8 @@ async function runKafkaConsumer() {
               aircraftModel: String(payload.flightId),      
               flightDate: payload.departureAt.split('T')[0],
               duration,
+              price,
+              currency
             };
 
             const req = { body: flightData };
@@ -223,14 +232,14 @@ async function runKafkaConsumer() {
               }
             }
 
-            const { reservationId, userId, status, amount } = payload;
+            const { reservationId, userId, status, amount, currency } = payload;
             
-            if (!reservationId || !userId || !status) {
+            if (!reservationId || !userId || !status || !amount || !currency) {
               console.error('❌ Payload de pago incompleto:', payload);
               continue;
             }
 
-            console.log(`💳 Procesando pago: reservationId=${reservationId}, status=${status}`);
+            console.log(`💳 Procesando pago: reservationId=${reservationId}, status=${status}, amount=${amount}, currency=${currency}`);
 
             // Procesar de forma SÍNCRONA usando Promise
             await new Promise((resolve, reject) => {
@@ -258,7 +267,9 @@ async function runKafkaConsumer() {
                 req.body = {
                   paymentStatus: 'SUCCESS',
                   reservationId: reservationId,
-                  externalUserId: userId
+                  externalUserId: userId,
+                  amount: amount,
+                  currency: currency
                 };
                 console.log('✅ Confirmando pago vía controller...');
                 paymentEventsController.confirmPayment(req, res);
@@ -267,7 +278,9 @@ async function runKafkaConsumer() {
                 req.body = {
                   paymentStatus: 'FAILED',
                   reservationId: reservationId,
-                  externalUserId: userId
+                  externalUserId: userId,
+                  amount: amount,
+                  currency: currency
                 };
                 console.log('❌ Marcando pago como fallido vía controller...');
                 paymentEventsController.failPayment(req, res);
@@ -276,7 +289,9 @@ async function runKafkaConsumer() {
                 req.body = {
                   paymentStatus: 'REFUND',
                   reservationId: reservationId,
-                  externalUserId: userId
+                  externalUserId: userId,
+                  amount: amount,
+                  currency: currency
                 };
                 console.log('💸 Procesando reembolso vía controller...');
                 paymentEventsController.cancelPayment(req, res);
