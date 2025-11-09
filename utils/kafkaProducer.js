@@ -1,6 +1,6 @@
 const axios = require('axios');
 const db = require('../config/db'); // Import database configuration
-
+///COMMENTED OUT: const { v4: uuidv4 } = require('uuid'); // Para generar IDs únicos
 // Configuración del broker externo
 const BROKER_URL = 'http://34.172.179.60/events';
 const API_KEY = 'microservices-api-key-2024-secure';
