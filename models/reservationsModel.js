@@ -109,7 +109,7 @@ const getReservationsByExternalUserId = (externalUserId, callback) => {
 
 
 
-const createReservation = (externalUserId, externalFlightId, seatIds, currency, callback) => {
+const createReservation = (externalUserId, externalFlightId, seatIds, callback) => {
     if (!externalFlightId) {
         return callback({ success: false, message: 'externalFlightId is required.' });
     }
@@ -118,7 +118,7 @@ const createReservation = (externalUserId, externalFlightId, seatIds, currency, 
     }
 
     // ✅ VALIDACIÓN 1: Verificar que el vuelo exista y NO esté cancelado
-    const checkFlightQuery = `SELECT flightStatus FROM flights WHERE externalFlightId = ?`;
+    const checkFlightQuery = `SELECT flightStatus, currency FROM flights WHERE externalFlightId = ?`;
     db.query(checkFlightQuery, [externalFlightId], (errFlight, flightRows) => {
         if (errFlight) return callback(errFlight);
 
@@ -131,6 +131,7 @@ const createReservation = (externalUserId, externalFlightId, seatIds, currency, 
         }
 
         const flightStatus = flightRows[0].flightStatus;
+        const currency = flightRows[0].currency;
 
         if (flightStatus === 'CANCELLED') {
             console.error(`[createReservation] ❌ Cannot create reservation on cancelled flight: ${externalFlightId}`);
@@ -143,10 +144,10 @@ const createReservation = (externalUserId, externalFlightId, seatIds, currency, 
         console.log(`[createReservation] ✅ Flight status validated: ${flightStatus}`);
 
         // Continuar con la creación de la reserva
-        proceedWithReservation();
+        proceedWithReservation(currency);
     }); // ✅ Cierre del db.query(checkFlightQuery)
 
-    function proceedWithReservation() {
+    function proceedWithReservation(currency) {
         const placeholders = seatIds.map(() => '?').join(',');
         const seatsCount = seatIds.length;
 
@@ -196,7 +197,7 @@ const createReservation = (externalUserId, externalFlightId, seatIds, currency, 
                     INSERT INTO reservations (externalUserId, externalFlightId, seatId, status, totalPrice, currency)
                     VALUES (?, ?, ?, ?, ?, ?)
                 `;
-                db.query(insertQuery, [externalUserId, externalFlightId, seatIdJson, status, totalPrice, 'ARS'], (err3, result) => {
+                db.query(insertQuery, [externalUserId, externalFlightId, seatIdJson, status, totalPrice, currency], (err3, result) => {
                     if (err3) return callback(err3);
 
                     reservationId = result.insertId;
@@ -259,7 +260,7 @@ const createReservation = (externalUserId, externalFlightId, seatIds, currency, 
                                                 reservationId, 
                                                 totalPrice,
                                                 seatsReserved: seatsCount,
-                                                currency: 'ARS',
+                                                currency,
                                                 aircraftModel
                                             });
                                         });
