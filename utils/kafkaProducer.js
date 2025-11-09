@@ -34,9 +34,9 @@ class EventsProducerService {
    * @param {Object} reservationData - Datos de la reserva
    */
   async sendReservationCreatedEvent(reservationData) {
-    // Verificar si reservationId es undefined
-    if (reservationData.reservationId === undefined) {
-      console.warn('❌ Reservation ID is undefined. Event will not be sent.');
+    // Verificar si reservationId es undefined o la cadena 'undefined'
+    if (reservationData.reservationId === undefined || reservationData.reservationId === 'undefined') {
+      console.warn('❌ Reservation ID is invalid (undefined or "undefined"). Event will not be sent.');
       return;
     }
 
