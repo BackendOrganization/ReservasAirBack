@@ -42,7 +42,7 @@ const calculateTotalSeats = (aircraft) => {
 };
 
 // Función para generar asientos
-const generateSeats = (externalFlightId, aircraft, callback) => {
+const generateSeats = (externalFlightId, aircraft, flightData, callback) => {
     const config = aircraftConfig[aircraft];
     if (!config) {
         return callback(new Error(`Aircraft type ${aircraft} not supported`));
@@ -52,8 +52,9 @@ const generateSeats = (externalFlightId, aircraft, callback) => {
     let seatId = 1;
     let currentRow = 1;
 
-    // Obtener el precio base de Economy del vuelo
-    const economyPrice = config.categories.find(category => category.name === 'ECONOMY').price;
+    // Obtener el precio base de Economy desde flightData.price
+    // Validar que flightData.price sea un número válido
+    const economyPrice = Number.isFinite(flightData.price) ? flightData.price : 0; // Asignar 0 si no es válido
 
     // Generar asientos por categoría con precios dinámicos
     config.categories.forEach(category => {
@@ -132,8 +133,8 @@ const insertFlight = (flightData, callback) => {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
-        // Validar que flightData.price tenga un valor válido
-        const flightPrice = flightData.price || 0; // Asignar 0 como valor por defecto si no está definido
+        // Validar y convertir flightData.price a un número entero válido
+        const flightPrice = Number.isInteger(flightData.price) ? flightData.price : 0; // Asignar 0 si no es un número entero
 
         db.query(
             sql,
@@ -156,7 +157,7 @@ const insertFlight = (flightData, callback) => {
                 const flightId = result.insertId;
 
                 // Crear los asientos asociados
-                generateSeats(flightId, flightData.aircraft, (seatsErr, seatsResult) => {
+                generateSeats(flightId, flightData.aircraft, flightData, (seatsErr, seatsResult) => {
                     if (seatsErr) {
                         console.error('Error creating seats:', seatsErr);
                         // Si falla la creación de asientos, eliminar el vuelo insertado
