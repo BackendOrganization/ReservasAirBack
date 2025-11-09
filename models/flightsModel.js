@@ -132,6 +132,9 @@ const insertFlight = (flightData, callback) => {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
+        // Validar que flightData.price tenga un valor válido
+        const flightPrice = flightData.price || 0; // Asignar 0 como valor por defecto si no está definido
+
         db.query(
             sql,
             [
@@ -144,7 +147,7 @@ const insertFlight = (flightData, callback) => {
                 totalSeats, // total de asientos
                 0, // occupiedSeats inicia en 0
                 'ONTIME', // estado por defecto
-                flightData.price // nuevo campo price
+                flightPrice // Usar flightPrice en lugar de flightData.price
             ],
             (err, result) => {
                 if (err) return callback(err);
