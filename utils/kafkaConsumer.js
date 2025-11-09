@@ -45,10 +45,31 @@ async function runKafkaConsumer() {
               }
             }
 
+            const airportMappings = {
+              EZE: { city: 'Buenos Aires', name: 'Ministro Pistarini' },
+              AEP: { city: 'Buenos Aires', name: 'Aeroparque' },
+              SCL: { city: 'Santiago', name: 'Arturo Merino Benítez' },
+              GRU: { city: 'São Paulo', name: 'Guarulhos' },
+              MIA: { city: 'Miami', name: 'International' },
+              MAD: { city: 'Madrid', name: 'Barajas' },
+              BCN: { city: 'Barcelona', name: 'El Prat' },
+              FCO: { city: 'Rome', name: 'Fiumicino' },
+              JFK: { city: 'New York', name: 'JFK' },
+              LAX: { city: 'Los Angeles', name: 'LAX' },
+              ATL: { city: 'Atlanta', name: 'Hartsfield-Jackson' },
+              CDG: { city: 'París', name: 'Charles de Gaulle' },
+              MEX: { city: 'Ciudad de México', name: 'Benito Juárez' },
+              AMS: { city: 'Ámsterdam', name: 'Schiphol' },
+              SFO: { city: 'San Francisco', name: 'International' },
+              NRT: { city: 'Tokio', name: 'Narita' }
+            };
+
             const parseLocation = (input, time) => {
               let code = typeof input === 'object' && input ? (input.code || input.city || input) : input;
+              const mapping = airportMappings[code] || { city: 'Generic City', name: 'Unknown' };
               return {
-                city: code === 'EZE' ? 'Buenos Aires' : 'Generic City',
+                city: mapping.city,
+                name: mapping.name,
                 code,
                 time: time || undefined
               };
