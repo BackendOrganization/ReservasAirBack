@@ -21,30 +21,23 @@ describe('reservationsModel', () => {
         });
         done();
       };
-      // 1) getFlightQuery -> validates flight exists and get aircraftModel + status
+
       db.query.mockImplementationOnce((sql, params, callback) => 
-        callback(null, [{ aircraftModel: 'B737-800-TEST', flightStatus: 'ONTIME' }])
+        callback(null, [{ aircraftModel: 'B737-800-TEST', flightStatus: 'ONTIME', currency: 'ARS' }])
       );
-      // 2) checkQuery -> check for existing pending reservations
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, []));
-      // 3) availableQuery -> returns available seat with price
       db.query.mockImplementationOnce((sql, params, callback) =>
         callback(null, [{ seatId: 'A1', price: 200 }])
       );
-      // 4) insertQuery -> creates reservation, returns insertId
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, { insertId: 10 }));
-      // 5) reserveQuery -> reserve the seat
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, { affectedRows: 1 }));
-      // 6) updateFlightQuery -> update counters
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, {}));
-      // 7) getFlightQuery (again) -> get aircraftModel for response
       db.query.mockImplementationOnce((sql, params, callback) => 
         callback(null, [{ aircraftModel: 'B737-800-TEST' }])
       );
-      // 8) insert payment event
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, {}));
 
-      reservationsModel.createReservation('user1', 'FL123', ['A1'], 'ARS', cb);
+      reservationsModel.createReservation('user1', 'FL123', ['A1'], cb);
     });
 
   test('debería fallar cuando el asiento no está disponible', (done) => {
@@ -57,16 +50,13 @@ describe('reservationsModel', () => {
         done();
       };
 
-      // 1) getFlightQuery -> validates flight exists
       db.query.mockImplementationOnce((sql, params, callback) => 
-        callback(null, [{ aircraftModel: 'B737-800-TEST', flightStatus: 'ONTIME' }])
+        callback(null, [{ aircraftModel: 'B737-800-TEST', flightStatus: 'ONTIME', currency: 'ARS' }])
       );
-      // 2) checkQuery -> check for existing pending reservations
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, []));
-      // 3) availableQuery -> no available seats
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, []));
 
-      reservationsModel.createReservation('user1', 'FL123', ['A1'], 'ARS', cb);
+      reservationsModel.createReservation('user1', 'FL123', ['A1'], cb);
     });
   });
 
