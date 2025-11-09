@@ -116,8 +116,9 @@ const insertFlight = (flightData, callback) => {
                 duration,
                 freeSeats,
                 occupiedSeats,
-                flightStatus
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                flightStatus,
+                price
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         db.query(
@@ -131,7 +132,8 @@ const insertFlight = (flightData, callback) => {
                 flightData.duration,
                 totalSeats, // total de asientos
                 0, // occupiedSeats inicia en 0
-                'ONTIME' // estado por defecto
+                'ONTIME', // estado por defecto
+                flightData.price // nuevo campo price
             ],
             (err, result) => {
                 if (err) return callback(err);
