@@ -91,48 +91,57 @@ exports.cancelPayment = (req, res) => {
 
 exports.failPayment = (req, res) => {
     const paymentData = req.body;
+    console.log('[failPayment] Datos recibidos:', paymentData);
+
     if (!paymentData.paymentStatus || !paymentData.reservationId || !paymentData.externalUserId) {
+        console.error('[failPayment] ❌ Faltan datos requeridos:', paymentData);
         return res.status(400).json({ error: 'Missing required payment data' }); // 400
     }
 
-    // Validar el estado actual de la reserva antes de continuar
+    console.log('[failPayment] Validando estado actual de la reserva...');
     const db = require('../config/db');
     const query = 'SELECT status FROM reservations WHERE reservationId = ? LIMIT 1';
 
     db.query(query, [paymentData.reservationId], (err, results) => {
         if (err) {
-            console.error('[failPayment] Database error:', err);
+            console.error('[failPayment] ❌ Error en la base de datos:', err);
             return res.status(500).json({ error: 'Database error' }); // 500
         }
 
         if (!results || results.length === 0) {
-            console.warn('[failPayment] Reservation not found:', paymentData.reservationId);
+            console.warn('[failPayment] ⚠️ Reserva no encontrada:', paymentData.reservationId);
             return res.status(404).json({ error: 'Reservation not found' }); // 404
         }
 
         const currentStatus = results[0].status;
+        console.log(`[failPayment] Estado actual de la reserva: ${currentStatus}`);
+
         if (currentStatus !== 'PENDING') {
-            console.warn(`[failPayment] Cannot fail payment. Current status: ${currentStatus}. Only PENDING reservations can be failed.`);
+            console.warn(`[failPayment] ⚠️ No se puede marcar como FAILED. Estado actual: ${currentStatus}`);
             return res.status(400).json({ error: `Cannot fail payment. Current status: ${currentStatus}. Only PENDING reservations can be failed.` }); // 400
         }
 
-        // Continuar con el flujo si el estado es válido
+        console.log('[failPayment] Creando evento de pago fallido...');
         paymentEventsModel.createPaymentEventAndFailReservation(paymentData, async (err, result) => {
             if (err) {
+                console.error('[failPayment] ❌ Error al crear el evento de pago:', err);
                 return res.status(500).json({ error: 'Error processing payment event', details: err }); // 500
             }
 
+            console.log('[failPayment] Evento de pago creado exitosamente:', result);
+
             // Publicar evento de actualización de reserva
             try {
+                console.log('[failPayment] Publicando evento de reserva actualizada...');
                 await eventsProducer.sendReservationUpdatedEvent({
                     reservationId: String(paymentData.reservationId),
                     newStatus: 'FAILED',
                     reservationDate: result.reservationDate,
                     flightDate: result.flightDate
                 });
-                console.log('✅ Reservation updated event published for FAILED status');
+                console.log('✅ [failPayment] Evento de reserva actualizada publicado para estado FAILED');
             } catch (eventError) {
-                console.error('❌ Error publishing reservation updated event:', eventError);
+                console.error('[failPayment] ❌ Error al publicar el evento de reserva actualizada:', eventError);
                 // No fallar la respuesta aunque falle el evento
             }
 
