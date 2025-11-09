@@ -99,6 +99,11 @@ const generateSeats = (externalFlightId, aircraft, flightData, callback) => {
     });
 };
 
+const formatTime = (time) => {
+    const [hours, minutes] = time.split(':').map(part => part.padStart(2, '0'));
+    return `${hours}:${minutes || '00'}`; // Default to '00' if minutes are missing
+};
+
 const insertFlight = (flightData, callback) => {
     // Verificar si el tipo de aeronave es soportado
     if (!aircraftConfig[flightData.aircraft]) {
@@ -136,13 +141,16 @@ const insertFlight = (flightData, callback) => {
         // Validar y convertir flightData.price a un número entero válido
         const flightPrice = Number.isInteger(flightData.price) ? flightData.price : 0; // Asignar 0 si no es un número entero
 
+        const origin = { ...flightData.origin, time: formatTime(flightData.origin.time) };
+        const destination = { ...flightData.destination, time: formatTime(flightData.destination.time) };
+
         db.query(
             sql,
             [
                 flightData.aircraft,
                 flightData.aircraftModel, // Guardar flightId del evento en aircraftModel
-                JSON.stringify(flightData.origin),
-                JSON.stringify(flightData.destination),
+                JSON.stringify(origin),
+                JSON.stringify(destination),
                 flightData.flightDate,
                 flightData.duration,
                 totalSeats, // total de asientos
