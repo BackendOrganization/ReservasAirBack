@@ -52,8 +52,19 @@ const generateSeats = (externalFlightId, aircraft, callback) => {
     let seatId = 1;
     let currentRow = 1;
 
-    // Generar asientos por categoría
+    // Obtener el precio base de Economy del vuelo
+    const economyPrice = config.categories.find(category => category.name === 'ECONOMY').price;
+
+    // Generar asientos por categoría con precios dinámicos
     config.categories.forEach(category => {
+        let categoryPrice = economyPrice; // Precio base para Economy
+
+        if (category.name === 'BUSINESS') {
+            categoryPrice = economyPrice * 1.2; // Incremento del 20% para Business
+        } else if (category.name === 'FIRST') {
+            categoryPrice = economyPrice * 1.4; // Incremento del 40% para First
+        }
+
         for (let row = 0; row < category.rows; row++) {
             for (let blockIndex = 0; blockIndex < config.blocks.length; blockIndex++) {
                 const seatNumber = `${currentRow}${config.blocks[blockIndex]}`;
@@ -63,7 +74,7 @@ const generateSeats = (externalFlightId, aircraft, callback) => {
                     seatNumber,
                     category.name,
                     'AVAILABLE',
-                    category.price
+                    categoryPrice
                 ]);
                 seatId++;
             }
