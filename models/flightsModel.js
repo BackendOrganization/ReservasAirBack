@@ -100,6 +100,9 @@ const generateSeats = (externalFlightId, aircraft, flightData, callback) => {
 };
 
 const formatTime = (time) => {
+    if (typeof time !== 'string') {
+        return '00:00'; // Default to midnight if time is invalid
+    }
     const [hours, minutes] = time.split(':').map(part => part.padStart(2, '0'));
     return `${hours}:${minutes || '00'}`; // Default to '00' if minutes are missing
 };
@@ -215,6 +218,9 @@ const cancelReservationsByFlight = (externalFlightId, callback) => {
 
         db.query(selectSql, [externalFlightId], async (err, reservations) => {
             if (err) return callback(err);
+            if (!Array.isArray(reservations)) {
+                return callback(new Error('Invalid reservations data'));
+            }
             if (reservations.length === 0) {
                 return callback(null, { updated: 0, paidCancelled: 0, pendingCancelled: 0 });
             }
