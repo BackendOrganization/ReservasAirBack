@@ -422,6 +422,23 @@ const getFlightByAircraftModel = (aircraftModel, callback) => {
     });
 };
 
+// Buscar vuelo por externalFlightId y devolver datos relevantes
+const getFlightByExternalFlightId = (externalFlightId, callback) => {
+    const sql = 'SELECT * FROM flights WHERE externalFlightId = ? LIMIT 1';
+
+    db.query(sql, [externalFlightId], (err, results) => {
+        if (err) {
+            return callback(err);
+        }
+
+        if (results.length === 0) {
+            return callback(null, null); // No se encontró el vuelo
+        }
+
+        callback(null, results[0]); // Retornar el vuelo encontrado
+    });
+};
+
 
 module.exports = { 
     insertFlight, 
@@ -430,5 +447,6 @@ module.exports = {
     calculateTotalSeats,
     updateFlightToDelayed, // ✅ NUEVO
     updateFlightFields,
-    getFlightByAircraftModel
+    getFlightByAircraftModel,
+    getFlightByExternalFlightId,
 };

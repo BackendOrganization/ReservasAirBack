@@ -1,5 +1,6 @@
 const reservationsModel = require('../models/reservationsModel');
 const kafkaProducer = require('../utils/kafkaProducer'); // Nuevo import
+const flightsModel = require('../models/flightsModel');
 
 exports.getReservationsByExternalUserId = (req, res) => {
     const externalUserId = req.params.externalUserId;
@@ -42,10 +43,27 @@ exports.createReservation = async (req, res) => {
 
     try {
         // Obtener currency basado en externalFlightId
-        const flightData = await reservationsModel.getFlightByExternalFlightId(externalFlightId);
+        const flightData = await new Promise((resolve, reject) => {
+            flightsModel.getFlightByExternalFlightId(externalFlightId, (err, data) => {
+                if (err) return reject(err);
+                resolve(data);
+            });
+        });
+
+        if (!flightData) {
+            return res.status(404).json({ error: 'Flight not found' });
+        }
+
         const currency = flightData.currency;
 
-        reservationsModel.createReservation(externalUserId, externalFlightId, seatIds, currency, async (err, result) => {
+        console.log('Debugging createReservation call:', {
+            externalUserId,
+            externalFlightId,
+            seatIds,
+            currency
+        });
+
+        reservationsModel.createReservation(externalUserId, externalFlightId, seatIds, async (err, result) => {
             if (err) {
                 console.error(err);
                 return res.status(500).json({ error: 'Seat is already reserved' }); // 500

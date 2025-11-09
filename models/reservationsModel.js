@@ -110,6 +110,12 @@ const getReservationsByExternalUserId = (externalUserId, callback) => {
 
 
 const createReservation = (externalUserId, externalFlightId, seatIds, callback) => {
+    console.log('Tracing callback in createReservation:', { callback });
+
+    if (typeof callback !== 'function') {
+        throw new TypeError('Callback must be a function');
+    }
+
     if (!externalFlightId) {
         return callback({ success: false, message: 'externalFlightId is required.' });
     }
