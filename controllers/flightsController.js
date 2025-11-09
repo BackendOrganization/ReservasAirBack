@@ -73,7 +73,15 @@ exports.cancelFlightReservations = (req, res) => {
             console.log(`Confirmed reservations:`, confirmedReservations); // Log the confirmed reservations
 
             if (confirmedReservations.length === 0) {
-                return res.status(200).json({ message: 'No confirmed reservations to cancel.' });
+                // If no confirmed reservations, update flight status to CANCELLED
+                flightsModel.cancelReservationsByFlight(flightId, (updateErr, updateResult) => {
+                    if (updateErr) {
+                        console.error('Error updating flight status to CANCELLED:', updateErr);
+                        return res.status(500).json({ error: 'Error updating flight status', details: updateErr });
+                    }
+                    return res.status(200).json({ message: 'No confirmed reservations to cancel. Flight status updated to CANCELLED.' });
+                });
+                return;
             }
 
             let completed = 0;
@@ -92,7 +100,14 @@ exports.cancelFlightReservations = (req, res) => {
                                 if (errors.length > 0) {
                                     return res.status(500).json({ message: 'Some reservations failed to cancel.', errors });
                                 }
-                                res.status(200).json({ message: 'All confirmed reservations cancelled successfully.' });
+                                // After all reservations are cancelled, update flight status to CANCELLED
+                                flightsModel.cancelReservationsByFlight(flightId, (updateErr, updateResult) => {
+                                    if (updateErr) {
+                                        console.error('Error updating flight status to CANCELLED:', updateErr);
+                                        return res.status(500).json({ error: 'Error updating flight status', details: updateErr });
+                                    }
+                                    res.status(200).json({ message: 'All confirmed reservations cancelled successfully. Flight status updated to CANCELLED.' });
+                                });
                             }
                         }
                     })

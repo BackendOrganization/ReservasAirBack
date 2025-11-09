@@ -203,12 +203,24 @@ const insertFlight = (flightData, callback) => {
 const cancelReservationsByFlight = (externalFlightId, callback) => {
     const reservationsModel = require('./reservationsModel');
     const kafkaProducer = require('../utils/kafkaProducer');
-    
-    // ✅ CAMBIO 1: Actualizar estado del vuelo a 'cancelled'
-    const updateFlightSql = 'UPDATE flights SET flightStatus = ? WHERE externalFlightId = ?';
-    db.query(updateFlightSql, ['CANCELLED', externalFlightId], (flightErr) => {
-        if (flightErr) return callback(flightErr);
 
+    // ✅ Update flight status to CANCELLED
+    const updateFlightSql = 'UPDATE flights SET flightStatus = ? WHERE externalFlightId = ?';
+    console.log(`[cancelReservationsByFlight] Attempting to update flightStatus to CANCELLED for externalFlightId: ${externalFlightId}`);
+    db.query(updateFlightSql, ['CANCELLED', externalFlightId], (flightErr, result) => {
+        if (flightErr) {
+            console.error(`[cancelReservationsByFlight] Error updating flightStatus:`, flightErr);
+            return callback(flightErr);
+        }
+        console.log(`[cancelReservationsByFlight] Flight status update result:`, result);
+
+        if (result.affectedRows === 0) {
+            console.warn(`[cancelReservationsByFlight] No rows affected. Check if externalFlightId: ${externalFlightId} exists.`);
+            return callback(null, { message: 'No flight updated. Flight may not exist.' });
+        }
+
+        console.log(`[cancelReservationsByFlight] Flight status successfully updated to CANCELLED for externalFlightId: ${externalFlightId}`);
+        // Continue to process reservations
         const selectSql = `
             SELECT r.reservationId, r.externalUserId, r.seatId, r.totalPrice, r.status, r.createdAt
             FROM reservations r
@@ -218,10 +230,8 @@ const cancelReservationsByFlight = (externalFlightId, callback) => {
 
         db.query(selectSql, [externalFlightId], async (err, reservations) => {
             if (err) return callback(err);
-            if (!Array.isArray(reservations)) {
-                return callback(new Error('Invalid reservations data'));
-            }
-            if (reservations.length === 0) {
+            if (!Array.isArray(reservations) || reservations.length === 0) {
+                console.log(`[cancelReservationsByFlight] No reservations to process. Flight status updated to CANCELLED.`);
                 return callback(null, { updated: 0, paidCancelled: 0, pendingCancelled: 0 });
             }
 
