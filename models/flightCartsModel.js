@@ -1,70 +1,87 @@
 const db = require('../config/db');
 
 const addFlightToCart = (externalUserId, flightId, callback) => {
-    // Primero verificamos si el usuario ya tiene un carrito
-    const checkUserSql = 'SELECT flights FROM flight_carts WHERE externalUserId = ?';
-    
-    db.query(checkUserSql, [externalUserId], (err, results) => {
-        if (err) {
-            return callback(err);
+    // Validar si el vuelo existe en la tabla de flights
+    const checkFlightSql = 'SELECT COUNT(*) as count FROM flights WHERE externalFlightId = ?';
+
+    db.query(checkFlightSql, [flightId], (flightErr, flightResults) => {
+        if (flightErr) {
+            return callback(flightErr);
         }
 
-        if (results.length > 0) {
-            let currentFlights = results[0].flights || [];
-            
-            // Si flights viene como string JSON, lo parseamos
-            if (typeof currentFlights === 'string') {
-                try {
-                    currentFlights = JSON.parse(currentFlights);
-                } catch (parseErr) {
-                    currentFlights = [];
-                }
+        if (flightResults[0].count === 0) {
+            return callback(null, {
+                success: false,
+                message: `Flight with ID ${flightId} does not exist in the flights table`,
+                externalUserId: externalUserId
+            });
+        }
+
+        // Continuar con la lógica existente si el vuelo existe
+        const checkUserSql = 'SELECT flights FROM flight_carts WHERE externalUserId = ?';
+
+        db.query(checkUserSql, [externalUserId], (err, results) => {
+            if (err) {
+                return callback(err);
             }
 
-            // Verificamos si el vuelo ya está en el carrito
-            if (!currentFlights.includes(flightId)) {
-                currentFlights.push(flightId);
-                
-                const updateSql = 'UPDATE flight_carts SET flights = ? WHERE externalUserId = ?';
-                db.query(updateSql, [JSON.stringify(currentFlights), externalUserId], (updateErr, updateResult) => {
-                    if (updateErr) {
-                        return callback(updateErr);
+            if (results.length > 0) {
+                let currentFlights = results[0].flights || [];
+
+                // Si flights viene como string JSON, lo parseamos
+                if (typeof currentFlights === 'string') {
+                    try {
+                        currentFlights = JSON.parse(currentFlights);
+                    } catch (parseErr) {
+                        currentFlights = [];
+                    }
+                }
+
+                // Verificamos si el vuelo ya está en el carrito
+                if (!currentFlights.includes(flightId)) {
+                    currentFlights.push(flightId);
+
+                    const updateSql = 'UPDATE flight_carts SET flights = ? WHERE externalUserId = ?';
+                    db.query(updateSql, [JSON.stringify(currentFlights), externalUserId], (updateErr, updateResult) => {
+                        if (updateErr) {
+                            return callback(updateErr);
+                        }
+                        callback(null, {
+                            success: true,
+                            message: 'Flight added to existing cart',
+                            externalUserId: externalUserId,
+                            flights: currentFlights,
+                            action: 'updated'
+                        });
+                    });
+                } else {
+                    // El vuelo ya está en el carrito
+                    callback(null, {
+                        success: false,
+                        message: 'Flight already in cart',
+                        externalUserId: externalUserId,
+                        flights: currentFlights
+                    });
+                }
+            } else {
+                // El usuario no tiene carrito, creamos uno nuevo
+                const newFlights = [flightId];
+                const insertSql = 'INSERT INTO flight_carts (externalUserId, flights) VALUES (?, ?)';
+
+                db.query(insertSql, [externalUserId, JSON.stringify(newFlights)], (insertErr, insertResult) => {
+                    if (insertErr) {
+                        return callback(insertErr);
                     }
                     callback(null, {
                         success: true,
-                        message: 'Flight added to existing cart',
+                        message: 'New cart created and flight added',
                         externalUserId: externalUserId,
-                        flights: currentFlights,
-                        action: 'updated'
+                        flights: newFlights,
+                        action: 'created'
                     });
                 });
-            } else {
-                // El vuelo ya está en el carrito
-                callback(null, {
-                    success: false,
-                    message: 'Flight already in cart',
-                    externalUserId: externalUserId,
-                    flights: currentFlights
-                });
             }
-        } else {
-            // El usuario no tiene carrito, creamos uno nuevo
-            const newFlights = [flightId];
-            const insertSql = 'INSERT INTO flight_carts (externalUserId, flights) VALUES (?, ?)';
-            
-            db.query(insertSql, [externalUserId, JSON.stringify(newFlights)], (insertErr, insertResult) => {
-                if (insertErr) {
-                    return callback(insertErr);
-                }
-                callback(null, {
-                    success: true,
-                    message: 'New cart created and flight added',
-                    externalUserId: externalUserId,
-                    flights: newFlights,
-                    action: 'created'
-                });
-            });
-        }
+        });
     });
 };
 
