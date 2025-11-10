@@ -1,18 +1,28 @@
 const db = require('../config/db');
 
-const UsersModel = {
-  async findById(id) {
-    const [rows] = await db.query('SELECT * FROM users WHERE id = ?', [id]);
-    return rows.length > 0 ? rows[0] : null;
-  },
-
-  async create(id) {
-    await db.query('INSERT INTO users (id) VALUES (?)', [id]);
-  },
-
-  async delete(id) {
-    await db.query('DELETE FROM users WHERE id = ?', [id]);
-  }
+const findById = (id, callback) => {
+  db.query('SELECT * FROM users WHERE id = ?', [id], (err, results) => {
+    if (err) return callback(err);
+    callback(null, results.length > 0 ? results[0] : null);
+  });
 };
 
-module.exports = UsersModel;
+const create = (id, callback) => {
+  db.query('INSERT INTO users (id) VALUES (?)', [id], (err, result) => {
+    if (err) return callback(err);
+    callback(null, result);
+  });
+};
+
+const deleteUser = (id, callback) => {
+  db.query('DELETE FROM users WHERE id = ?', [id], (err, result) => {
+    if (err) return callback(err);
+    callback(null, result);
+  });
+};
+
+module.exports = {
+  findById,
+  create,
+  delete: deleteUser
+};
