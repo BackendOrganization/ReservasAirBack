@@ -8,6 +8,10 @@ const UsersModel = {
 
   async create(id) {
     await db.query('INSERT INTO users (id) VALUES (?)', [id]);
+  },
+
+  async delete(id) {
+    await db.query('DELETE FROM users WHERE id = ?', [id]);
   }
 };
 
