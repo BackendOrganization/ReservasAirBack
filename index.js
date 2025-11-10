@@ -17,12 +17,14 @@ const reservationsRoutes = require('./routes/reservationsRoutes');
 const paymentEventsRoutes = require('./routes/paymentEventsRoutes');
 const flightsRoutes = require('./routes/flightsRoutes');
 const flightCartsRoutes = require('./routes/flightsCartsRoutes');
+const usersRoutes = require('./routes/usersRoutes');
 
 app.use(seatsRoutes);
 app.use(reservationsRoutes);
 app.use(paymentEventsRoutes);
 app.use(flightsRoutes);
 app.use(flightCartsRoutes);
+app.use('/users', usersRoutes);
 
 const path = require('path');
 const swaggerUi = require('swagger-ui-express');
