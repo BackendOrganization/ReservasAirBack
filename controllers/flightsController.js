@@ -56,37 +56,42 @@ exports.cancelFlightReservations = (req, res) => {
     const externalFlightId = req.params.externalFlightId;
     const aircraftModel = req.params.aircraftModel;
 
-    // Helper function to cancel all confirmed reservations for a flight
+    // Helper function to cancel all confirmed and pending reservations for a flight
+    const paymentEventsController = require('./paymentEventsController');
     const cancelAllReservations = (flightId, res) => {
-        console.log(`Fetching reservations for flightId: ${flightId}`); // Log the flightId
+        console.log(`Fetching reservations for flightId: ${flightId}`);
 
-        reservationsModel.getReservationsByExternalFlightId(flightId, (err, reservations) => {
+        reservationsModel.getAllReservationsByExternalFlightId(flightId, (err, reservations) => {
             if (err) {
                 console.error('Error fetching reservations:', err);
                 return res.status(500).json({ error: 'Error fetching reservations', details: err });
             }
 
-            console.log(`Reservations fetched:`, reservations); // Log the fetched reservations
+            console.log(`Reservations fetched:`, reservations);
 
             const confirmedReservations = reservations.filter(r => r.status === 'PAID');
+            const pendingReservations = reservations.filter(r => r.status === 'PENDING');
 
-            console.log(`Confirmed reservations:`, confirmedReservations); // Log the confirmed reservations
+            console.log(`Confirmed reservations:`, confirmedReservations);
+            console.log(`Pending reservations:`, pendingReservations);
 
-            if (confirmedReservations.length === 0) {
-                // If no confirmed reservations, update flight status to CANCELLED
+            // Si no hay reservas PAID ni PENDING, solo actualizar el estado del vuelo
+            if (confirmedReservations.length === 0 && pendingReservations.length === 0) {
                 flightsModel.cancelReservationsByFlight(flightId, (updateErr, updateResult) => {
                     if (updateErr) {
                         console.error('Error updating flight status to CANCELLED:', updateErr);
                         return res.status(500).json({ error: 'Error updating flight status', details: updateErr });
                     }
-                    return res.status(200).json({ message: 'No confirmed reservations to cancel. Flight status updated to CANCELLED.' });
+                    return res.status(200).json({ message: 'No reservations to cancel. Flight status updated to CANCELLED.' });
                 });
                 return;
             }
 
+            let totalToProcess = confirmedReservations.length + pendingReservations.length;
             let completed = 0;
             let errors = [];
 
+            // Cancelar reservas PAID
             confirmedReservations.forEach(reservation => {
                 const mockReq = { params: { reservationId: reservation.reservationId } };
                 const mockRes = {
@@ -96,24 +101,58 @@ exports.cancelFlightReservations = (req, res) => {
                                 errors.push({ reservationId: reservation.reservationId, error: result });
                             }
                             completed++;
-                            if (completed === confirmedReservations.length) {
+                            if (completed === totalToProcess) {
                                 if (errors.length > 0) {
                                     return res.status(500).json({ message: 'Some reservations failed to cancel.', errors });
                                 }
-                                // After all reservations are cancelled, update flight status to CANCELLED
                                 flightsModel.cancelReservationsByFlight(flightId, (updateErr, updateResult) => {
                                     if (updateErr) {
                                         console.error('Error updating flight status to CANCELLED:', updateErr);
                                         return res.status(500).json({ error: 'Error updating flight status', details: updateErr });
                                     }
-                                    res.status(200).json({ message: 'All confirmed reservations cancelled successfully. Flight status updated to CANCELLED.' });
+                                    res.status(200).json({ message: 'All reservations cancelled successfully. Flight status updated to CANCELLED.' });
                                 });
                             }
                         }
                     })
                 };
-
                 reservationsController.cancelReservation(mockReq, mockRes);
+            });
+
+            // Marcar reservas PENDING como FAILED
+            pendingReservations.forEach(reservation => {
+                const mockReq = {
+                    body: {
+                        paymentStatus: 'FAILED',
+                        reservationId: reservation.reservationId,
+                        externalUserId: reservation.externalUserId,
+                        amount: reservation.totalAmount || reservation.totalPrice || 0,
+                        currency: reservation.currency || ''
+                    }
+                };
+                const mockRes = {
+                    status: (code) => ({
+                        json: (result) => {
+                            if (code >= 400) {
+                                errors.push({ reservationId: reservation.reservationId, error: result });
+                            }
+                            completed++;
+                            if (completed === totalToProcess) {
+                                if (errors.length > 0) {
+                                    return res.status(500).json({ message: 'Some reservations failed to cancel.', errors });
+                                }
+                                flightsModel.cancelReservationsByFlight(flightId, (updateErr, updateResult) => {
+                                    if (updateErr) {
+                                        console.error('Error updating flight status to CANCELLED:', updateErr);
+                                        return res.status(500).json({ error: 'Error updating flight status', details: updateErr });
+                                    }
+                                    res.status(200).json({ message: 'All reservations cancelled successfully. Flight status updated to CANCELLED.' });
+                                });
+                            }
+                        }
+                    })
+                };
+                paymentEventsController.failPayment(mockReq, mockRes);
             });
         });
     };
