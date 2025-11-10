@@ -126,20 +126,21 @@ const insertFlight = (flightData, callback) => {
         // ✅ Calcular asientos totales según el tipo de aeronave
         const totalSeats = calculateTotalSeats(flightData.aircraft);
 
-        const sql = `
-            INSERT INTO flights (
-                aircraft,
-                aircraftModel,
-                origin,
-                destination,
-                flightDate,
-                duration,
-                freeSeats,
-                occupiedSeats,
-                flightStatus,
-                price
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
+            const sql = `
+                INSERT INTO flights (
+                    aircraft,
+                    aircraftModel,
+                    origin,
+                    destination,
+                    flightDate,
+                    duration,
+                    freeSeats,
+                    occupiedSeats,
+                    flightStatus,
+                    price,
+                    currency
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `;
 
         // Validar y convertir flightData.price a un número entero válido
         const flightPrice = Number.isInteger(flightData.price) ? flightData.price : 0; // Asignar 0 si no es un número entero
@@ -147,55 +148,56 @@ const insertFlight = (flightData, callback) => {
         const origin = { ...flightData.origin, time: formatTime(flightData.origin.time) };
         const destination = { ...flightData.destination, time: formatTime(flightData.destination.time) };
 
-        db.query(
-            sql,
-            [
-                flightData.aircraft,
-                flightData.aircraftModel, // Guardar flightId del evento en aircraftModel
-                JSON.stringify(origin),
-                JSON.stringify(destination),
-                flightData.flightDate,
-                flightData.duration,
-                totalSeats, // total de asientos
-                0, // occupiedSeats inicia en 0
-                'ONTIME', // estado por defecto
-                flightPrice // Usar flightPrice en lugar de flightData.price
-            ],
-            (err, result) => {
-                if (err) return callback(err);
+            db.query(
+                sql,
+                [
+                    flightData.aircraft,
+                    flightData.aircraftModel, // Guardar flightId del evento en aircraftModel
+                    JSON.stringify(origin),
+                    JSON.stringify(destination),
+                    flightData.flightDate,
+                    flightData.duration,
+                    totalSeats, // total de asientos
+                    0, // occupiedSeats inicia en 0
+                    flightData.flightStatus || 'ONTIME', // usa el valor recibido o ONTIME por defecto
+                    flightPrice, // Usar flightPrice en lugar de flightData.price
+                    flightData.currency // Nuevo campo currency
+                ],
+                (err, result) => {
+                    if (err) return callback(err);
 
-                // ✅ Obtener el ID autogenerado por MySQL
-                const flightId = result.insertId;
+                    // ✅ Obtener el ID autogenerado por MySQL
+                    const flightId = result.insertId;
 
-                // Crear los asientos asociados
-                generateSeats(flightId, flightData.aircraft, flightData, (seatsErr, seatsResult) => {
-                    if (seatsErr) {
-                        console.error('Error creating seats:', seatsErr);
-                        // Si falla la creación de asientos, eliminar el vuelo insertado
-                        const deleteSql = 'DELETE FROM flights WHERE id = ?';
-                        db.query(deleteSql, [flightId], () => {
-                            callback(seatsErr);
-                        });
-                        return;
-                    }
-
-                    // ✅ Actualizar freeSeats con los asientos realmente creados usando aircraftModel
-                    const updateSql = 'UPDATE flights SET freeSeats = ? WHERE aircraftModel = ?';
-                    db.query(updateSql, [seatsResult.seatsCreated, flightData.aircraftModel], (updateErr) => {
-                        if (updateErr) {
-                            console.error('Error updating freeSeats:', updateErr);
+                    // Crear los asientos asociados
+                    generateSeats(flightId, flightData.aircraft, flightData, (seatsErr, seatsResult) => {
+                        if (seatsErr) {
+                            console.error('Error creating seats:', seatsErr);
+                            // Si falla la creación de asientos, eliminar el vuelo insertado
+                            const deleteSql = 'DELETE FROM flights WHERE id = ?';
+                            db.query(deleteSql, [flightId], () => {
+                                callback(seatsErr);
+                            });
+                            return;
                         }
-                        // Retornar resultado exitoso con info completa
-                        callback(null, {
-                            flightId,
-                            seatsCreated: seatsResult.seatsCreated,
-                            totalSeats,
-                            flightStatus: 'ONTIME'
+
+                        // ✅ Actualizar freeSeats con los asientos realmente creados usando aircraftModel
+                        const updateSql = 'UPDATE flights SET freeSeats = ? WHERE aircraftModel = ?';
+                        db.query(updateSql, [seatsResult.seatsCreated, flightData.aircraftModel], (updateErr) => {
+                            if (updateErr) {
+                                console.error('Error updating freeSeats:', updateErr);
+                            }
+                            // Retornar resultado exitoso con info completa
+                            callback(null, {
+                                flightId,
+                                seatsCreated: seatsResult.seatsCreated,
+                                totalSeats,
+                                flightStatus: flightData.flightStatus || 'ONTIME'
+                            });
                         });
                     });
-                });
-            }
-        );
+                }
+            );
     });
 };
 

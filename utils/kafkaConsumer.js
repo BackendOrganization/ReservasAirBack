@@ -100,6 +100,21 @@ async function runKafkaConsumer() {
               console.warn('⚠️ Flight created event missing price or currency:', { price, currency });
             }
 
+            // Mapeo de estados
+            const statusMap = {
+              'EN_HORA': 'ONTIME',
+              'ONTIME': 'ONTIME',
+              'DELAYED': 'DELAYED',
+              'DEMORADO': 'DELAYED',
+              'CANCELLED': 'CANCELLED',
+              'CANCELADO': 'CANCELLED'
+            };
+            let flightStatus = payload.flightStatus;
+            if (!flightStatus && payload.status) {
+              const normalized = payload.status.toUpperCase();
+              flightStatus = statusMap[normalized] || normalized;
+            }
+            if (!flightStatus) flightStatus = 'ONTIME';
             const flightData = {
               flightNumber: payload.flightNumber,
               origin: parseLocation(payload.origin, originTime),
@@ -109,7 +124,8 @@ async function runKafkaConsumer() {
               flightDate: payload.departureAt.split('T')[0],
               duration,
               price,
-              currency
+              currency,
+              flightStatus: flightStatus
             };
 
             const req = { body: flightData };

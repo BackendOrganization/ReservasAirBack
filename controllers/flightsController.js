@@ -7,7 +7,7 @@ exports.ingestFlight = (req, res) => {
     if (!flightData || !flightData.origin || !flightData.destination || !flightData.aircraft) {
         return res.status(400).json({ error: 'Missing required flight data (id, origin, destination, aircraft)' });
     }
-    
+    // flightStatus puede venir en el body, lo pasamos al modelo
     flightsModel.insertFlight(flightData, (err, result) => {
         if (err) {
             return res.status(500).json({ error: 'Error inserting flight', details: err });
@@ -15,7 +15,8 @@ exports.ingestFlight = (req, res) => {
         res.status(201).json({ 
             message: 'Flight and seats created successfully', 
             flightId: flightData.id,
-            seatsCreated: result.seatsCreated
+            seatsCreated: result.seatsCreated,
+            flightStatus: flightData.flightStatus || 'ONTIME'
         });
     });
 };
