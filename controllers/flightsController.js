@@ -292,7 +292,17 @@ exports.isFlightCancelled = (req, res) => {
             return res.status(404).json({ message: 'Flight not found' });
         }
 
-        const isCancelled = flight.flightStatus === 'CANCELLED';
-        res.status(200).json({ cancelled: isCancelled });
+        // Usar la misma lógica SQL que el carrito
+        const db = require('../config/db');
+        const sql = `SELECT * FROM flights WHERE externalFlightId = ? AND (flightStatus IS NULL OR flightStatus != 'CANCELLED') AND (CONCAT(flightDate, ' ', LPAD(JSON_UNQUOTE(JSON_EXTRACT(origin, '$.time')), 5, '0')) > NOW())`;
+        db.query(sql, [externalFlightId], (err2, results) => {
+            if (err2) {
+                console.error('Error running SQL for isFlightCancelled:', err2);
+                return res.status(500).json({ error: 'Error running SQL', details: err2.message });
+            }
+            // Si no hay resultados, el vuelo está cancelado o inhabilitado
+            const cancelled = results.length === 0;
+            res.status(200).json({ cancelled });
+        });
     });
 };
