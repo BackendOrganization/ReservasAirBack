@@ -15,6 +15,8 @@ tags:
     description: Endpoints for payment management
   - name: Flights
     description: Endpoints for flight management
+  - name: FlightsCarts
+    description: Endpoints for managing user flight carts
 
 paths:
   /seats/flight/{externalFlightId}:
@@ -62,6 +64,8 @@ paths:
         '500':
           description: Error getting seats
 
+  # --- reservation ---
+  
   /reservation/book/{externalFlightId}/{externalUserId}:
     post:
       tags: [Reservations]
@@ -201,6 +205,54 @@ paths:
                           price: "400.00"
                       totalPrice: 1200
                       status: "CANCELLED"
+                      createdAt: "2025-09-15T20:18:19.000Z"
+                      updatedAt: "2025-09-15T20:26:13.000Z"
+        '400':
+          description: Missing required parameter
+        '500':
+          description: Error fetching reservations
+
+  /reservation/full/{externalUserId}:
+    get:
+      tags: [Reservations]
+      summary: Get full reservations (flight + seat details) for a user
+      parameters:
+        - name: externalUserId
+          in: path
+          required: true
+          description: The external ID of the user
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Full reservation data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FullReservation'
+              examples:
+                FullReservationsExample:
+                  summary: Example full reservations
+                  value:
+                    - reservationId: 19
+                      externalUserId: 1
+                      externalFlightId: 1001
+                      flightData:
+                        aircraft: "E190"
+                        origin: {}
+                        destination: {}
+                        flightDate: "2025-09-17"
+                        aircraftModel: "Airbus A330-200"
+                      seats:
+                        - seatId: 18
+                          seatNumber: "4B"
+                          category: "ECONOMY"
+                          price: "400.00"
+                      totalPrice: 400
+                      status: "PAID"
                       createdAt: "2025-09-15T20:18:19.000Z"
                       updatedAt: "2025-09-15T20:26:13.000Z"
         '400':
@@ -355,6 +407,80 @@ paths:
           description: Missing required payment data
         '500':
           description: Error processing payment event
+
+  /payment/notify/{reservationId}:
+    get:
+      tags: [Payment]
+      summary: Check if payment for a reservation was confirmed (PAID)
+      parameters:
+        - name: reservationId
+          in: path
+          required: true
+          description: The ID of the reservation to check
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Returns whether the reservation is PAID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reservationId:
+                    type: string
+                  success:
+                    type: boolean
+              examples:
+                PaidExample:
+                  summary: Reservation is PAID
+                  value:
+                    reservationId: "15"
+                    success: true
+        '400':
+          description: Missing reservationId
+        '404':
+          description: Reservation not found
+        '500':
+          description: Database error
+
+  /payment/notify/failed/{reservationId}:
+    get:
+      tags: [Payment]
+      summary: Check if payment for a reservation failed (FAILED)
+      parameters:
+        - name: reservationId
+          in: path
+          required: true
+          description: The ID of the reservation to check
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Returns whether the reservation is FAILED
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reservationId:
+                    type: string
+                  success:
+                    type: boolean
+              examples:
+                FailedExample:
+                  summary: Reservation is FAILED
+                  value:
+                    reservationId: "11"
+                    success: true
+        '400':
+          description: Missing reservationId
+        '404':
+          description: Reservation not found
+        '500':
+          description: Database error
 
   # --- FLIGHTS ---
   /flights/ingest:
@@ -519,6 +645,277 @@ paths:
                         aircraftModel: "Boeing 737-800"
                         flightDate: "2025-12-16T00:00:00.000Z"
                         duration: "1h 30m"
+
+    put:
+      tags: [Flights]
+      summary: Update any flight fields (status, schedules, etc.)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                flightId:
+                  type: string
+                  description: aircraftModel / flightId used as identifier
+                newStatus:
+                  type: string
+                  description: New status (e.g. DELAYED, CANCELLED, ONTIME)
+                newDepartureAt:
+                  type: string
+                  format: date-time
+                  description: New departure timestamp (ISO)
+                newArrivalAt:
+                  type: string
+                  format: date-time
+                  description: New arrival timestamp (ISO)
+              required:
+                - flightId
+            examples:
+              UpdateFlightExample:
+                summary: Update status and times
+                value:
+                  flightId: "1001"
+                  newStatus: "DELAYED"
+                  newDepartureAt: "2025-11-10T16:00:00Z"
+                  newArrivalAt: "2025-11-10T18:30:00Z"
+      responses:
+        '200':
+          description: Flight updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  aircraftModel:
+                    type: string
+              examples:
+                FlightUpdated:
+                  summary: Flight updated response
+                  value:
+                    success: true
+                    message: "Flight updated successfully"
+                    aircraftModel: "1001"
+        '400':
+          description: Missing required flightId or invalid payload
+        '404':
+          description: Flight not found
+        '500':
+          description: Error updating flight
+
+  /flights/{externalFlightId}/delay:
+    patch:
+      tags: [Flights]
+      summary: Mark a flight as DELAYED
+      parameters:
+        - name: externalFlightId
+          in: path
+          required: true
+          description: The external ID of the flight to mark as delayed
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        description: (optional) Payload with additional data if required
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Flight status updated to DELAYED
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  aircraftModel:
+                    type: string
+                  flightStatus:
+                    type: string
+              examples:
+                DelayedExample:
+                  summary: Flight delayed response
+                  value:
+                    success: true
+                    message: "Flight status updated to DELAYED"
+                    aircraftModel: "1001"
+                    flightStatus: "DELAYED"
+        '400':
+          description: Missing or invalid externalFlightId
+        '404':
+          description: Flight not found
+        '500':
+          description: Error updating flight status
+
+  /flights/{externalFlightId}/isCancelled:
+    get:
+      tags: [Flights]
+      summary: Check if a flight is cancelled
+      parameters:
+        - name: externalFlightId
+          in: path
+          required: true
+          description: The external ID of the flight to check
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Returns whether the flight is cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cancelled:
+                    type: boolean
+              examples:
+                IsCancelledTrue:
+                  summary: Flight is cancelled
+                  value:
+                    cancelled: true
+                IsCancelledFalse:
+                  summary: Flight is not cancelled
+                  value:
+                    cancelled: false
+        '400':
+          description: Missing externalFlightId
+        '404':
+          description: Flight not found
+        '500':
+          description: Database error
+
+
+  # --- FLIGHTS ---
+  /flight-cart/add:
+    post:
+      tags: [FlightsCarts]
+      summary: Add a flight to a user's cart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlightCartAdd'
+            examples:
+              AddExample:
+                summary: Add flight to cart
+                value:
+                  externalUserId: 123
+                  flights: 1001
+      responses:
+        '201':
+          description: Flight added to cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightCartResponse'
+              examples:
+                Added:
+                  summary: Added
+                  value:
+                    success: true
+                    message: "Flight added to cart"
+                    externalUserId: 123
+                    flights: [1001]
+        '400':
+          description: Missing or invalid payload
+        '500':
+          description: Error adding flight to cart
+
+  /flight-cart/remove:
+    post:
+      tags: [FlightsCarts]
+      summary: Remove a flight from a user's cart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlightCartRemove'
+            examples:
+              RemoveExample:
+                summary: Remove flight from cart
+                value:
+                  externalUserId: 123
+                  flights: 1001
+      responses:
+        '200':
+          description: Flight removed from cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightCartResponse'
+              examples:
+                Removed:
+                  summary: Removed
+                  value:
+                    success: true
+                    message: "Flight removed from cart"
+                    externalUserId: 123
+                    flights: []
+        '400':
+          description: Missing or invalid payload
+        '404':
+          description: Flight not in cart
+        '500':
+          description: Error removing flight from cart
+
+  /flight-cart/{externalUserId}:
+    get:
+      tags: [FlightsCarts]
+      summary: Get cart flights for a user
+      parameters:
+        - name: externalUserId
+          in: path
+          required: true
+          description: The external ID of the user
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Cart retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightCart'
+              examples:
+                CartExample:
+                  summary: User cart example
+                  value:
+                    externalUserId: 123
+                    flights: 
+                      - externalFlightId: 1001
+                        aircraft: "A330"
+                        origin:
+                          code: "EZE"
+                          city: "Buenos Aires"
+                          time: "14:30"
+                        destination:
+                          code: "SAME"
+                          city: "Mendoza"
+                          time: "16:30"
+                        flightDate: "2026-01-15T00:00:00.000Z"
+                    flightCount: 1
+        '400':
+          description: Missing externalUserId
+        '500':
+          description: Error fetching cart
 
 components:
   schemas:
