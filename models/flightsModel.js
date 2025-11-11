@@ -398,12 +398,6 @@ const updateFlightFields = (flightData, callback) => {
                 if (needDestination) {
                     arrDate = new Date(fieldsToUpdate.newArrivalAt);
                     if (!isNaN(arrDate)) {
-                        const yyyy = arrDate.getUTCFullYear();
-                        const mm = String(arrDate.getUTCMonth() + 1).padStart(2, '0');
-                        const dd = String(arrDate.getUTCDate()).padStart(2, '0');
-                        setClauses.push('flightDate = ?');
-                        values.push(`${yyyy}-${mm}-${dd}`);
-
                         const hh = String(arrDate.getUTCHours()).padStart(2, '0');
                         const min = String(arrDate.getUTCMinutes()).padStart(2, '0');
                         destination.time = `${hh}:${min}`;
