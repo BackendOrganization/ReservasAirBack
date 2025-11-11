@@ -145,7 +145,7 @@ exports.cancelReservation = async (req, res) => {
         
         return res.status(200).json(result);
     });
-};
+};//fixing
 
 exports.getFullReservationsByExternalUserId = (req, res) => {
     const externalUserId = req.params.externalUserId;
