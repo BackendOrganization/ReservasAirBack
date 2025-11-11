@@ -138,9 +138,7 @@ async function runKafkaConsumer() {
             await flightsController.ingestFlight(req, res);
           }
 
-          // ==============================================================
-          // 🛠️ EVENTO: FLIGHT UPDATED
-          // ==============================================================
+       //Evento: flight updated
           else if (type === 'flights.flight.updated') {
             const flightsController = require('../controllers/flightsController');
             let payload = event.payload;
