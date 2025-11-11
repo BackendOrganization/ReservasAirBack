@@ -277,7 +277,6 @@ async function runKafkaConsumer() {
               };
 
               // Procesar según el estado del pago
-              // Estados contemplados: SUCCESS, FAILURE, EXPIRED, REFUND (PENDING se ignora)
               if (status === 'SUCCESS' || status === 'PAID') {
                 req.body = {
                   paymentStatus: 'SUCCESS',
@@ -289,7 +288,7 @@ async function runKafkaConsumer() {
                 console.log('✅ Confirmando pago vía controller...');
                 paymentEventsController.confirmPayment(req, res);
               } 
-              else if (status === 'FAILURE' || status === 'FAILED' || status === 'REJECTED') {
+              else if (status === 'FAILED' || status === 'FAILURE' || status === 'REJECTED'|| status === 'EXPIRED') {
                 req.body = {
                   paymentStatus: 'FAILED',
                   reservationId: reservationId,
@@ -300,18 +299,7 @@ async function runKafkaConsumer() {
                 console.log('❌ Marcando pago como fallido vía controller...');
                 paymentEventsController.failPayment(req, res);
               }
-              else if (status === 'EXPIRED') {
-                req.body = {
-                  paymentStatus: 'FAILED',
-                  reservationId: reservationId,
-                  externalUserId: userId,
-                  amount: amount,
-                  currency: currency
-                };
-                console.log('⏰ Marcando pago como expirado (fallido) vía controller...');
-                paymentEventsController.failPayment(req, res);
-              }
-              else if (status === 'REFUND' || status === 'REFUNDED') {
+              else if (status === 'REFUND') {
                 req.body = {
                   paymentStatus: 'REFUND',
                   reservationId: reservationId,
@@ -322,13 +310,9 @@ async function runKafkaConsumer() {
                 console.log('💸 Procesando reembolso vía controller...');
                 paymentEventsController.cancelPayment(req, res);
               }
-              else if (status === 'PENDING') {
-                console.log(`⏳ Estado PENDING ignorado para reservationId=${reservationId}`);
-                resolve(); // Resolver inmediatamente, no se procesa PENDING
-              }
               else {
-                console.log(`⚠️ Estado de pago no reconocido: ${status}`);
-                resolve(); // Resolver inmediatamente si no se reconoce
+                console.log(`ℹ️ Estado de pago no procesado: ${status}`);
+                resolve(); // Resolver inmediatamente si no se procesa
               }
             });
             
