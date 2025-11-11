@@ -248,7 +248,7 @@ async function runKafkaConsumer() {
 
             const { reservationId, userId, status, amount, currency } = payload;
             
-            if (!reservationId || !userId || !status || !amount || !currency) {
+            if (!reservationId || !userId || !status || amount === undefined || amount === null || !currency) {
               console.error('❌ Payload de pago incompleto:', payload);
               continue;
             }
