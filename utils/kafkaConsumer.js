@@ -85,8 +85,8 @@ async function runKafkaConsumer() {
                 const hours = Math.floor(totalMinutes / 60);
                 const minutes = totalMinutes % 60;
                 duration = `${hours}h ${minutes.toString().padStart(2, '0')}m`;
-                originTime = `${dep.getUTCHours().toString().padStart(2, '0')}`;
-                destinationTime = `${arr.getUTCHours().toString().padStart(2, '0')}`;
+                originTime = `${dep.getUTCHours().toString().padStart(2, '0')}:${dep.getUTCMinutes().toString().padStart(2, '0')}`;
+                destinationTime = `${arr.getUTCHours().toString().padStart(2, '0')}:${arr.getUTCMinutes().toString().padStart(2, '0')}`;
               }
             } catch {
               duration = null;
