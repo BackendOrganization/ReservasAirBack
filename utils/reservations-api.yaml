@@ -710,59 +710,6 @@ paths:
         '500':
           description: Error updating flight
 
-  /flights/{externalFlightId}/delay:
-    patch:
-      tags: [Flights]
-      summary: Mark a flight as DELAYED
-      parameters:
-        - name: externalFlightId
-          in: path
-          required: true
-          description: The external ID of the flight to mark as delayed
-          schema:
-            type: integer
-            format: int64
-      requestBody:
-        description: (optional) Payload with additional data if required
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                reason:
-                  type: string
-      responses:
-        '200':
-          description: Flight status updated to DELAYED
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  aircraftModel:
-                    type: string
-                  flightStatus:
-                    type: string
-              examples:
-                DelayedExample:
-                  summary: Flight delayed response
-                  value:
-                    success: true
-                    message: "Flight status updated to DELAYED"
-                    aircraftModel: "1001"
-                    flightStatus: "DELAYED"
-        '400':
-          description: Missing or invalid externalFlightId
-        '404':
-          description: Flight not found
-        '500':
-          description: Error updating flight status
-
   /flights/{externalFlightId}/isCancelled:
     get:
       tags: [Flights]
@@ -802,7 +749,7 @@ paths:
           description: Database error
 
 
-  # --- FLIGHTS ---
+  # --- FLIGHTSCarts  ---
   /flight-cart/add:
     post:
       tags: [FlightsCarts]
@@ -838,44 +785,6 @@ paths:
           description: Missing or invalid payload
         '500':
           description: Error adding flight to cart
-
-  /flight-cart/remove:
-    post:
-      tags: [FlightsCarts]
-      summary: Remove a flight from a user's cart
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/FlightCartRemove'
-            examples:
-              RemoveExample:
-                summary: Remove flight from cart
-                value:
-                  externalUserId: 123
-                  flights: 1001
-      responses:
-        '200':
-          description: Flight removed from cart
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FlightCartResponse'
-              examples:
-                Removed:
-                  summary: Removed
-                  value:
-                    success: true
-                    message: "Flight removed from cart"
-                    externalUserId: 123
-                    flights: []
-        '400':
-          description: Missing or invalid payload
-        '404':
-          description: Flight not in cart
-        '500':
-          description: Error removing flight from cart
 
   /flight-cart/{externalUserId}:
     get:
@@ -966,8 +875,7 @@ paths:
           required: true
           description: User id
           schema:
-            type: integer
-            format: int64
+            type: string
       responses:
         '200':
           description: User found
@@ -982,7 +890,7 @@ paths:
                     success: true
                     message: "the user exist"
                     user:
-                      id: 123
+                      id: "123"
         '400':
           description: Missing id
         '404':
@@ -998,8 +906,7 @@ paths:
           required: true
           description: User id
           schema:
-            type: integer
-            format: int64
+            type: string
       responses:
         '200':
           description: User deleted successfully
@@ -1233,8 +1140,7 @@ components:
       type: object
       properties:
         id:
-          type: integer
-          format: int64
+          type: string
       required:
         - id
 
@@ -1246,11 +1152,9 @@ components:
         message:
           type: string
         id:
-          type: integer
-          format: int64
+          type: string
         user:
           type: object
           properties:
             id:
-              type: integer
-              format: int64
+              type: string
