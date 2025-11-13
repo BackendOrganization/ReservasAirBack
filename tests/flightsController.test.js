@@ -27,7 +27,7 @@ describe('flightsController', () => {
       mockRequest.body = mockFlightData;
 
       flightsModel.insertFlight.mockImplementationOnce((data, cb) => {
-        cb(null, { flightId: 'AR123', seatsCreated: undefined });
+        cb(null, { flightId: 'AR123' });
       });
 
       flightsController.ingestFlight(mockRequest, mockResponse);
@@ -36,9 +36,7 @@ describe('flightsController', () => {
       expect(mockResponse.status).toHaveBeenCalledWith(201);
       expect(mockResponse.json).toHaveBeenCalledWith({
         message: 'Flight and seats created successfully',
-        flightId: 'AR123',
-        flightStatus: 'ONTIME',
-        seatsCreated: undefined
+        flightId: 'AR123'
       });
     });
 

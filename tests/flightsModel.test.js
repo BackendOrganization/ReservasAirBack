@@ -46,29 +46,28 @@ describe('flightsModel', () => {
   test('debería cancelar las reservas de un vuelo y crear eventos de reembolso', (done) => {
       const cb = (err, res) => {
         expect(err).toBeNull();
-        expect(res).toHaveProperty('paidCancelled');
-        expect(res).toHaveProperty('pendingCancelled');
-        expect(res).toHaveProperty('message');
+        expect(res).toHaveProperty('updated', 2);
+        expect(Array.isArray(res.events)).toBe(true);
         done();
       };
 
       const reservations = [
-        { reservationId: 1, externalUserId: 'u1', seatId: JSON.stringify([1]), totalPrice: 100, status: 'PAID', createdAt: new Date() },
-        { reservationId: 2, externalUserId: 'u2', seatId: JSON.stringify([2]), totalPrice: 200, status: 'PAID', createdAt: new Date() }
+        { reservationId: 1, externalUserId: 'u1', seatId: JSON.stringify([1]), totalPrice: 100 },
+        { reservationId: 2, externalUserId: 'u2', seatId: JSON.stringify([2]), totalPrice: 200 }
       ];
 
-      // Mock para require dentro de la función
-      jest.mock('../models/reservationsModel', () => ({
-        cancelReservation: jest.fn((id, cb) => cb(null, { success: true, alreadyCancelled: false }))
-      }));
-
-      // 0) actualizar estado del vuelo a cancelled
-      db.query.mockImplementationOnce((sql, params, callback) => callback(null, { affectedRows: 1 }));
-      // 1) seleccionar reservas
-      db.query.mockImplementationOnce((sql, params, callback) => callback(null, reservations));
+  // 0) actualizar estado a cancelado
+  db.query.mockImplementationOnce((sql, params, callback) => callback(null, { affectedRows: 1 }));
+  // 1) seleccionar reserva
+  db.query.mockImplementationOnce((sql, params, callback) => callback(null, reservations));
+  // 2) actualizar reservas a PENDING_REFUND
+  db.query.mockImplementationOnce((sql, params, callback) => callback(null, { affectedRows: 2 }));
+  // 3 & 4) insertar PENDING_REFUND events
+  db.query.mockImplementationOnce((sql, params, callback) => callback(null, { insertId: 101 }));
+  db.query.mockImplementationOnce((sql, params, callback) => callback(null, { insertId: 102 }));
 
       flightsModel.cancelReservationsByFlight('FL123', cb);
-    }, 10000); // Aumentar el tiempo límite a 10 segundos
+    });
   });
 
   describe('getAllFlights', () => {
@@ -128,23 +127,15 @@ describe('flightsModel', () => {
       };
 
       const flightData = {
-        aircraftModel: 'B737-800-TEST',
+        flightId: 'FL123',
         newDepartureAt: '2025-10-01T10:30:00Z',
         newArrivalAt: '2025-10-01T14:45:00Z',
         newStatus: 'DELAYED'
       };
 
-      const existingRow = [{ 
-        origin: JSON.stringify({ code: 'JFK', city: 'NYC' }), 
-        destination: JSON.stringify({ code: 'LAX', city: 'LA' }), 
-        flightDate: '2025-10-01' 
-      }];
-      
-      // Mock 1: SELECT flightStatus FROM flights WHERE aircraftModel = ? (validation check)
-      db.query.mockImplementationOnce((sql, params, callback) => callback(null, [{ flightStatus: 'ONTIME' }]));
-      // Mock 2: SELECT origin, destination, flightDate FROM flights WHERE aircraftModel = ? (get current JSON data)
+
+      const existingRow = [{ origin: JSON.stringify({ code: 'JFK', city: 'NYC' }), destination: JSON.stringify({ code: 'LAX', city: 'LA' }), flightDate: '2025-10-01' }];
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, existingRow));
-      // Mock 3: UPDATE flights SET ... WHERE aircraftModel = ? (final update with all fields)
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, { affectedRows: 1 }));
 
       flightsModel.updateFlightFields(flightData, cb);

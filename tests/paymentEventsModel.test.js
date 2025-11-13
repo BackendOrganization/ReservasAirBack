@@ -12,17 +12,14 @@ describe('paymentEventsModel', () => {
         expect(err).toBeNull();
         expect(res).toEqual({
           success: true,
-          message: 'Payment confirmed, reservation PAID, seats CONFIRMED, payment event created.',
-          reservationDate: '2024-01-01T00:00:00.000Z',
-          flightDate: '2024-02-01'
+          message: 'Payment confirmed, reservation PAID, seats CONFIRMED, payment event created.'
         });
         done();
       };
       
-      // Mock 1: SELECT status FROM reservations - debe retornar PENDING
-      db.query.mockImplementationOnce((sql, params, callback) => callback(null, [{ status: 'PENDING' }]));
 
-      // Mock 2: SELECT amount FROM payment_events WHERE reservationId = ? AND status = 'PENDING'
+      db.query.mockImplementationOnce((sql, params, callback) => callback(null, []));
+
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, [{ amount: 200 }]));
 
       // Mock pool connection
@@ -30,15 +27,13 @@ describe('paymentEventsModel', () => {
         beginTransaction: jest.fn(fn => fn(null)),
         query: jest
           .fn()
-          // 1) insert query (INSERT INTO paymentEvents)
+          //  insert query
           .mockImplementationOnce((sql, params, cb) => cb(null, { insertId: 1 }))
-          // 2) update reservation query (UPDATE reservations SET status = 'PAID')
+          //  update reservation query
           .mockImplementationOnce((sql, params, cb) => cb(null, { affectedRows: 1 }))
-          // 3) devuelve reservation con seatId JSON + flight id
+          //  devuelve reservation con seatId JSON + flight id
           .mockImplementationOnce((sql, params, cb) => cb(null, [{ seatId: JSON.stringify([1]), externalFlightId: 'FL123' }]))
-          // 4) getDatesQuery - retorna fechas
-          .mockImplementationOnce((sql, params, cb) => cb(null, [{ reservationDate: '2024-01-01T00:00:00.000Z', flightDate: '2024-02-01' }]))
-          // 5) confirm Seat sQuery (UPDATE seats SET status = 'CONFIRMED')
+          //  confirm Seat sQuery
           .mockImplementationOnce((sql, params, cb) => cb(null, { affectedRows: 1 })),
         commit: jest.fn(cb => cb(null)),
         rollback: jest.fn(cb => cb && cb()),
@@ -51,10 +46,10 @@ describe('paymentEventsModel', () => {
 
   test('debería devolver error si no hay evento pendiente', () => {
       const cb = jest.fn();
-      // Mock 1: SELECT status - retorna PENDING
-      db.query.mockImplementationOnce((sql, params, callback) => callback(null, [{ status: 'PENDING' }]));
-      // Mock 2: SELECT payment_events - NO hay evento pendiente
+      //no success
       db.query.mockImplementationOnce((sql, params, callback) => callback(null, []));
+      
+      //db.query.mockImplementationOnce((sql, params, callback) => callback(null, []));
 
       paymentEventsModel.confirmPayment('SUCCESS', 1, 'user1', cb);
 
@@ -69,19 +64,19 @@ describe('paymentEventsModel', () => {
         beginTransaction: jest.fn(cb => cb(null)),
         query: jest
           .fn()
-          // 1) findReservationQuery (FOR UPDATE) - debe retornar PENDING_REFUND
-          .mockImplementationOnce((sql, params, cb) => cb(null, [{ reservationId: 1, status: 'PENDING_REFUND', seatId: JSON.stringify([1]), externalFlightId: 'FL123', totalPrice: 200 }]))
-          // 2) cancelQuery (UPDATE reservations SET status = 'CANCELLED')
+          // 1) findReservationQuery (FOR UPDATE)
+          .mockImplementationOnce((sql, params, cb) => cb(null, [{ reservationId: 1, status: 'PENDING', seatId: JSON.stringify([1]), externalFlightId: 'FL123', totalPrice: 200 }]))
+          // 2) checkRefundQuery
+          .mockImplementationOnce((sql, params, cb) => cb(null, []))
+          // 3) cancelQuery
           .mockImplementationOnce((sql, params, cb) => cb(null, { affectedRows: 1 }))
-          // 3) getReservationQuery (SELECT seatId, externalFlightId, totalPrice)
+          // 4) getReservationQuery
           .mockImplementationOnce((sql, params, cb) => cb(null, [{ seatId: JSON.stringify([1]), externalFlightId: 'FL123', totalPrice: 200 }]))
-          // 4) refundEvent insert (INSERT INTO paymentEvents)
+          // 5) refundEvent insert
           .mockImplementationOnce((sql, params, cb) => cb(null, { insertId: 99 }))
-          // 5) getDatesQuery - retorna fechas
-          .mockImplementationOnce((sql, params, cb) => cb(null, [{ reservationDate: '2024-01-01T00:00:00.000Z', flightDate: '2024-02-01' }]))
-          // 6) release seats (UPDATE seats SET status = 'AVAILABLE')
+          // 6) release seats
           .mockImplementationOnce((sql, params, cb) => cb(null, { affectedRows: 1 }))
-          // 7) update flights counters (UPDATE flights SET freeSeats...)
+          // 7) update flights counters
           .mockImplementationOnce((sql, params, cb) => cb(null, { affectedRows: 1 })),
         commit: jest.fn(cb => cb(null)),
         rollback: jest.fn(cb => cb && cb()),
@@ -93,9 +88,7 @@ describe('paymentEventsModel', () => {
         expect(err).toBeNull();
         expect(res).toEqual({
           success: true,
-          message: 'Reservation cancelled, seats released, refund event created.',
-          reservationDate: '2024-01-01T00:00:00.000Z',
-          flightDate: '2024-02-01'
+          message: 'Reservation cancelled, seats released, refund event created.'
         });
         done();
       };
@@ -113,19 +106,17 @@ describe('paymentEventsModel', () => {
         beginTransaction: jest.fn(cb => cb(null)),
         query: jest
           .fn()
-          // 1) check FAILED events count
+          // check FAILED events count
           .mockImplementationOnce((sql, params, cb) => cb(null, [{ count: 0 }]))
-          // 2) get reservation totals and seat info WITH status PENDING
-          .mockImplementationOnce((sql, params, cb) => cb(null, [{ totalPrice: 200, seatId: JSON.stringify([1]), externalFlightId: 'FL123', status: 'PENDING' }]))
-          // 3) insert event
+          // get reservation totals and seat info
+          .mockImplementationOnce((sql, params, cb) => cb(null, [{ totalPrice: 200, seatId: JSON.stringify([1]), externalFlightId: 'FL123' }]))
+          // insert event
           .mockImplementationOnce((sql, params, cb) => cb(null, { insertId: 99 }))
-          // 4) update reservation to FAILED
+          // update reservation to FAILED
           .mockImplementationOnce((sql, params, cb) => cb(null, { affectedRows: 1 }))
-          // 5) get dates query
-          .mockImplementationOnce((sql, params, cb) => cb(null, [{ reservationDate: '2024-01-01', flightDate: '2024-02-01' }]))
-          // 6) release seats
+          // release seats
           .mockImplementationOnce((sql, params, cb) => cb(null, { affectedRows: 1 }))
-          // 7) update flight counters
+          // update flight counters
           .mockImplementationOnce((sql, params, cb) => cb(null, { affectedRows: 1 })),
         commit: jest.fn(cb => cb(null)),
         rollback: jest.fn(cb => cb && cb()),
@@ -135,12 +126,7 @@ describe('paymentEventsModel', () => {
 
       paymentEventsModel.createPaymentEventAndFailReservation(paymentData, cb);
 
-      expect(cb).toHaveBeenCalledWith(null, { 
-        paymentEventId: 99, 
-        reservationId: 1,
-        reservationDate: '2024-01-01',
-        flightDate: '2024-02-01'
-      });
+      expect(cb).toHaveBeenCalledWith(null, { paymentEventId: 99, reservationId: 1 });
     });
 
   test('debería evitar insertar si ya existe un evento FAILED', () => {

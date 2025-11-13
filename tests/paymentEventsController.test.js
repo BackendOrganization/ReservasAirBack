@@ -4,12 +4,6 @@ const paymentEventsModel = require('../models/paymentEventsModel');
 
 jest.mock('../models/paymentEventsModel');
 
-// Mock kafkaProducer at module level before requiring controller
-jest.mock('../utils/kafkaProducer', () => ({
-    sendEvent: jest.fn().mockResolvedValue(true),
-    sendReservationUpdatedEvent: jest.fn().mockResolvedValue(true)
-}));
-
 describe('paymentEventsController', () => {
     let mockRequest;
     let mockResponse;
@@ -27,7 +21,7 @@ describe('paymentEventsController', () => {
     });
 
     describe('confirmPayment', () => {
-    test('debería confirmar pago exitoso', (done) => {
+    test('debería confirmar pago exitoso', () => {
             mockRequest.body = {
                 paymentStatus: 'SUCCESS',
                 reservationId: 1,
@@ -36,15 +30,9 @@ describe('paymentEventsController', () => {
             paymentEventsModel.confirmPayment.mockImplementationOnce((status, resId, userId, callback) => {
                 callback(null, { success: true });
             });
-            
             paymentEventsController.confirmPayment(mockRequest, mockResponse);
-            
-            // Wait for async event publishing
-            setTimeout(() => {
-                expect(paymentEventsModel.confirmPayment).toHaveBeenCalledWith('SUCCESS', 1, 'user123', expect.any(Function));
-                expect(mockResponse.json).toHaveBeenCalledWith({ success: true });
-                done();
-            }, 50);
+            expect(paymentEventsModel.confirmPayment).toHaveBeenCalledWith('SUCCESS', 1, 'user123', expect.any(Function));
+            expect(mockResponse.json).toHaveBeenCalledWith({ success: true });
         });
 
     test('debería retornar status code 400 por falta de campos requeridos', () => {
@@ -73,20 +61,14 @@ describe('paymentEventsController', () => {
     });
 
     describe('cancelPayment', () => {
-    test('debería cancelar el pago exitosamente', (done) => {
+    test('debería cancelar el pago exitosamente', () => {
             mockRequest.body = { reservationId: 1, externalUserId: 'user123' };
             paymentEventsModel.cancelPayment.mockImplementationOnce((resId, userId, callback) => {
                 callback(null, { success: true });
             });
-            
             paymentEventsController.cancelPayment(mockRequest, mockResponse);
-            
-            // Wait for async event publishing
-            setTimeout(() => {
-                expect(paymentEventsModel.cancelPayment).toHaveBeenCalledWith(1, 'user123', expect.any(Function));
-                expect(mockResponse.json).toHaveBeenCalledWith({ success: true });
-                done();
-            }, 50);
+            expect(paymentEventsModel.cancelPayment).toHaveBeenCalledWith(1, 'user123', expect.any(Function));
+            expect(mockResponse.json).toHaveBeenCalledWith({ success: true });
         });
 
     test('debería retornar 400 por falta de datos', () => {
@@ -98,57 +80,21 @@ describe('paymentEventsController', () => {
     });
 
     describe('failPayment', () => {
-    test('debería procesar un pago fallido y marcar el pago como FAILED', (done) => {
+    test('debería procesar un pago fallido y marcar el pago como FAILED', () => {
             const paymentData = { paymentStatus: 'FAILED', reservationId: 1, externalUserId: 'user123' };
             mockRequest.body = paymentData;
-
-            // Mock para simular la consulta a la base de datos
-            const db = require('../config/db');
-            jest.spyOn(db, 'query').mockImplementation((query, values, callback) => {
-                if (query.includes('SELECT status FROM reservations')) {
-                    callback(null, [{ status: 'PENDING' }]); // Simular que la reserva existe y está en estado PENDING
-                }
-            });
-
-            // Mock para simular el comportamiento del modelo
             paymentEventsModel.createPaymentEventAndFailReservation.mockImplementationOnce((data, callback) => {
                 callback(null, { paymentEventId: 10, reservationId: 1 });
             });
-
-            // Agregar logs para depuración
-            console.log('[Test] Datos enviados al controlador:', mockRequest.body);
-
-            // Llamar al controlador
             paymentEventsController.failPayment(mockRequest, mockResponse);
-
-            // Esperar a que se complete la publicación del evento asíncrono
-            setTimeout(() => {
-                try {
-                    // Verificar que el modelo fue llamado con los datos correctos
-                    expect(paymentEventsModel.createPaymentEventAndFailReservation).toHaveBeenCalledWith(paymentData, expect.any(Function));
-
-                    // Verificar que la respuesta HTTP sea correcta
-                    expect(mockResponse.status).toHaveBeenCalledWith(201);
-                    expect(mockResponse.json).toHaveBeenCalledWith({
-                        message: 'Payment event created and reservation marked as FAILED',
-                        paymentEventId: 10,
-                        reservationId: 1
-                    });
-
-                    console.log('[Test] Prueba completada exitosamente.');
-                    done();
-                } catch (error) {
-                    console.error('[Test] Error en la prueba:', error);
-                    done(error);
-                }
-            }, 100); // Incrementar el tiempo de espera si es necesario
+            expect(paymentEventsModel.createPaymentEventAndFailReservation).toHaveBeenCalledWith(paymentData, expect.any(Function));
+            expect(mockResponse.status).toHaveBeenCalledWith(201);
+            expect(mockResponse.json).toHaveBeenCalledWith({ message: 'Payment event created and reservation marked as FAILED', paymentEventId: 10, reservationId: 1 });
         });
 
     test('debería retornar 400 por falta de datos', () => {
             mockRequest.body = {};
             paymentEventsController.failPayment(mockRequest, mockResponse);
-
-            // Verificar que se devuelva un error 400
             expect(mockResponse.status).toHaveBeenCalledWith(400);
             expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Missing required payment data' });
         });
