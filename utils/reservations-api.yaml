@@ -19,6 +19,8 @@ tags:
     description: Endpoints for managing user flight carts
   - name: Users
     description: Endpoints for user management
+  - name: Events
+    description: Endpoints for event producer monitoring
 
 paths:
   /seats/flight/{externalFlightId}:
@@ -928,6 +930,60 @@ paths:
           description: User not found
         '500':
           description: Internal server error
+
+  # --- EVENTS ---
+  /events:
+    get:
+      tags: [Events]
+      summary: Get the latest 5 events from the producer queue
+      description: Returns the most recent events stored in the eventsProducer table
+      responses:
+        '200':
+          description: Events retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  count:
+                    type: integer
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        payload:
+                          type: object
+                          description: The event payload (parsed JSON)
+              examples:
+                EventsExample:
+                  summary: Example events response
+                  value:
+                    success: true
+                    count: 2
+                    events:
+                      - id: 123
+                        payload:
+                          reservationId: "15"
+                          userId: "5"
+                          flightId: "1001"
+                          amount: 1200
+                          currency: "USD"
+                          reservedAt: "2025-11-13T10:30:00.000Z"
+                      - id: 122
+                        payload:
+                          reservationId: "14"
+                          userId: "3"
+                          flightId: "1002"
+                          amount: 800
+                          currency: "ARS"
+                          reservedAt: "2025-11-13T09:15:00.000Z"
+        '500':
+          description: Error fetching events from database
 
 components:
   schemas:
