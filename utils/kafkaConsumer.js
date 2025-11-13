@@ -334,6 +334,49 @@ async function runKafkaConsumer() {
           }
 
           // ==============================================================
+          // 🗑️ EVENTO: USER DELETED
+          // ==============================================================
+          else if (type === 'users.user.deleted') {
+            console.log('🗑️ Evento de usuario eliminado recibido:', event);
+            const usersController = require('../controllers/usersController');
+            
+            let payload = event.payload;
+            if (typeof payload === 'string') {
+              try {
+                payload = JSON.parse(payload);
+              } catch (e) {
+                console.error('Error parsing user deleted payload:', e, payload);
+                continue;
+              }
+            }
+
+            const { userId } = payload;
+            
+            if (!userId) {
+              console.error('❌ Payload de usuario eliminado incompleto:', payload);
+              continue;
+            }
+
+            console.log(`🗑️ Procesando eliminación de usuario: userId=${userId}`);
+
+            const req = { params: { id: userId } };
+            const res = {
+              status: (code) => ({
+                json: (obj) => {
+                  if (code >= 400) {
+                    console.error(`[DeleteUser][${code}]`, obj);
+                  } else {
+                    console.log(`[DeleteUser][${code}]`, obj);
+                  }
+                }
+              }),
+              json: (obj) => console.log('[DeleteUser][json]', obj)
+            };
+
+            usersController.deleteUser(req, res);
+          }
+
+          // ==============================================================
           // 📈 EVENTO: METRIC CREATED
           // ==============================================================
           else if (type === 'metrics.metric.created') {
