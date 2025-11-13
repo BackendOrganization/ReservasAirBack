@@ -18,6 +18,7 @@ const paymentEventsRoutes = require('./routes/paymentEventsRoutes');
 const flightsRoutes = require('./routes/flightsRoutes');
 const flightCartsRoutes = require('./routes/flightsCartsRoutes');
 const usersRoutes = require('./routes/usersRoutes');
+const eventsRoutes = require('./routes/eventsRoutes');
 
 app.use(seatsRoutes);
 app.use(reservationsRoutes);
@@ -25,6 +26,7 @@ app.use(paymentEventsRoutes);
 app.use(flightsRoutes);
 app.use(flightCartsRoutes);
 app.use('/users', usersRoutes);
+app.use(eventsRoutes);
 
 const path = require('path');
 const swaggerUi = require('swagger-ui-express');
