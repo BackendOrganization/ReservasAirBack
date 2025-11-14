@@ -95,6 +95,7 @@ const db = require('../config/db');
 const asientosModel = require('./seatsModel');
 
 //Descripcion
+//Second 
 const getReservationsByExternalUserId = (externalUserId, callback) => {
     const sql = `
         SELECT 
