@@ -94,7 +94,7 @@ const getAllReservationsByExternalFlightId = (externalFlightId, callback) => {
 const db = require('../config/db');
 const asientosModel = require('./seatsModel');
 
-
+//Descripcion
 const getReservationsByExternalUserId = (externalUserId, callback) => {
     const sql = `
         SELECT 
