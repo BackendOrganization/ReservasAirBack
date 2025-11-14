@@ -114,7 +114,7 @@ const getReservationsByExternalUserId = (externalUserId, callback) => {
         FROM reservations r
         LEFT JOIN flights f ON r.externalFlightId = f.externalFlightId
         WHERE r.externalUserId = ?
-        AND (r.status = 'PAID' OR r.status = 'CANCELLED' OR r.status='PENDING_REFUND' or r.status='PENDING')
+        AND (r.status = 'PAID' OR r.status = 'CANCELLED' OR r.status='PENDING_REFUND' or r.status='PENDING' or r.status='FAILED')
     `;
     db.query(sql, [externalUserId], async (err, reservations) => {
         if (err) return callback(err);
